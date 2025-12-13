@@ -23,7 +23,7 @@ from django.urls import URLPattern
 
 urlpatterns: list[URLPattern] = [
     path("admin/", admin.site.urls),
-    path("api/", include("route_calculator.urls")),
+    # path("api/", include("route_calculator.urls")),
 ]
 
 if settings.DEBUG:

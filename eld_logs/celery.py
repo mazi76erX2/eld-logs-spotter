@@ -4,9 +4,9 @@ from celery import Celery
 from typing import Any
 
 # Set the default Django settings module for the 'celery' program.
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "eld_logs.settings.local")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.setting.local")
 
-app = Celery("eld_logs")
+app = Celery("core")
 
 # Using a string here means the worker doesn't have to serialize
 # the configuration object to child processes.
