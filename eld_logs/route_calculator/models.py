@@ -1,5 +1,6 @@
-from django.db import models
 from typing import Any
+
+from django.db import models
 
 
 class TripCalculation(models.Model):
