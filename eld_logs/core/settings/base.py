@@ -130,6 +130,9 @@ USE_TZ = True
 
 STATIC_URL: str = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
 
 # Media files
 MEDIA_URL: str = "media/"
@@ -179,3 +182,5 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": "/api",
 }
+
+TEMPLATE_FILENAME = "blank-paper-log.png"
