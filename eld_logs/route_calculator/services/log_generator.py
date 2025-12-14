@@ -1,9 +1,10 @@
 import io
 import logging
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
+from django.conf import settings
+from django.contrib.staticfiles import finders
 from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
@@ -15,9 +16,7 @@ class LogGenerator:
     using centered duty-status lines.
     """
 
-    TEMPLATE_PATH = (
-        Path(__file__).resolve().parent.parent.parent / "static" / "blank-paper-log.png"
-    )
+    template_filename = settings.TEMPLATE_FILENAME
 
     # -------------------------------------------------
     # GRID GEOMETRY (CALIBRATED)
@@ -106,10 +105,20 @@ class LogGenerator:
     def __init__(self) -> None:
         self.fonts = self._load_fonts()
 
+    def _get_template_path(self) -> str:
+        """Get template path using Django's static file finder."""
+        path = finders.find(self.template_filename)
+        if not path:
+            raise FileNotFoundError(
+                f"Static file '{self.template_filename}' not found. "
+                "Ensure it exists in one of your STATICFILES_DIRS."
+            )
+        return path
+
     # -------------------------------------------------
     # FONT LOADING
     # -------------------------------------------------
-    def _load_fonts(self) -> Dict[str, ImageFont.FreeTypeFont]:
+    def _load_fonts(self) -> dict[str, ImageFont.FreeTypeFont]:
         paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
@@ -136,7 +145,7 @@ class LogGenerator:
     # -------------------------------------------------
     def generate_log_image(
         self,
-        log_data: Dict[str, Any],
+        log_data: dict[str, Any],
         day_number: int,
         driver_name: str,
         carrier_name: str,
@@ -148,10 +157,8 @@ class LogGenerator:
         truck_number: str = "",
         shipping_doc: str = "",
     ) -> bytes:
-        if not self.TEMPLATE_PATH.exists():
-            raise FileNotFoundError(f"Template not found: {self.TEMPLATE_PATH}")
-
-        img = Image.open(self.TEMPLATE_PATH).convert("RGB")
+        template_path = self._get_template_path()
+        img = Image.open(template_path).convert("RGB")
         draw = ImageDraw.Draw(img)
 
         # Use log_data values as fallback if parameters are empty
@@ -194,7 +201,7 @@ class LogGenerator:
     def _draw_header(
         self,
         draw: ImageDraw.ImageDraw,
-        log_data: Dict[str, Any],
+        log_data: dict[str, Any],
         driver_name: str,
         carrier_name: str,
         main_office: str,
@@ -308,8 +315,8 @@ class LogGenerator:
     def _draw_duty_status_lines(
         self,
         draw: ImageDraw.ImageDraw,
-        events: List[Dict[str, Any]],
-    ) -> Dict[str, float]:
+        events: list[dict[str, Any]],
+    ) -> dict[str, float]:
         totals = {k: 0.0 for k in self.STATUS_ROW_INDEX}
         prev_row_center_y = None
 
@@ -353,7 +360,7 @@ class LogGenerator:
     def _draw_totals(
         self,
         draw: ImageDraw.ImageDraw,
-        totals: Dict[str, float],
+        totals: dict[str, float],
     ) -> None:
         total_x = int(
             self.GRID_START_X + (24 * self.HOUR_WIDTH) + self.TOTAL_HOURS_OFFSET
@@ -377,7 +384,7 @@ class LogGenerator:
     def _draw_grand_total(
         self,
         draw: ImageDraw.ImageDraw,
-        totals: Dict[str, float],
+        totals: dict[str, float],
     ) -> None:
         grand_total = sum(totals.values())
 
@@ -395,7 +402,7 @@ class LogGenerator:
     def _draw_remarks(
         self,
         img: Image.Image,
-        remarks: List[Dict[str, str]],
+        remarks: list[dict[str, str]],
     ) -> None:
         x = self.REMARKS_START_X
 
