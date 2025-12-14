@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     # Third party apps
     "rest_framework",
     "corsheaders",
+    "drf_spectacular",
     # Local apps
     "route_calculator",
 ]
@@ -145,6 +146,7 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 # CORS Settings
@@ -167,3 +169,13 @@ CELERY_TASK_TIME_LIMIT: int = 30 * 60  # 30 minutes
 
 # OpenRouteService API Key
 OPENROUTESERVICE_API_KEY: str = config("OPENROUTESERVICE_API_KEY", default="")
+
+# DRF Spectacular Settings
+SPECTACULAR_SETTINGS = {
+    "TITLE": "ELD Logs API",
+    "DESCRIPTION": "API for route calculation, FMCSA HOS compliance, ELD logs, and route maps.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": "/api",
+}
