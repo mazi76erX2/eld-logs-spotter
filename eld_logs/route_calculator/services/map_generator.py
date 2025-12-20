@@ -1,6 +1,6 @@
 import io
 import logging
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -13,7 +13,7 @@ try:
     STATICMAP_AVAILABLE = True
 except ImportError:
     STATICMAP_AVAILABLE = False
-    logger.warning("staticmap not installed. Install with: pip install staticmap")
+    logger.warning("staticmap not installed.")
 
 
 def decode_polyline(encoded: str, precision: int = 5) -> list[tuple[float, float]]:
@@ -75,6 +75,10 @@ def decode_polyline(encoded: str, precision: int = 5) -> list[tuple[float, float
     return coordinates
 
 
+# Type alias for progress callback
+ProgressCallback = Callable[[int, str], None]
+
+
 class MapGenerator:
     """
     Generate accurate route maps using OpenStreetMap tiles with full road geometry
@@ -87,6 +91,7 @@ class MapGenerator:
     - Direction arrows showing route flow
     - Rest and fuel stop markers along route
     - Distance and duration info
+    - Progress callback support for async operations
     """
 
     DEFAULT_WIDTH = 1200
@@ -123,6 +128,7 @@ class MapGenerator:
         width: int = DEFAULT_WIDTH,
         height: int = DEFAULT_HEIGHT,
         route_data: Optional[dict[str, Any]] = None,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> bytes:
         """
         Generate a route map showing the actual road route and stops.
@@ -131,32 +137,53 @@ class MapGenerator:
             coordinates: list of {lat, lon, name} dicts for waypoints
             segments: list of trip segments with types and locations
             geometry: OpenRouteService GeoJSON geometry with route coordinates
-                     Format: {"type": "LineString", "coordinates": [[lon, lat], ...]}
-                     Or encoded polyline string
             width: Image width in pixels
             height: Image height in pixels
             route_data: Full route data from ORS (for additional details)
+            progress_callback: Optional callback for progress updates (progress: int, message: str)
 
         Returns:
             PNG image as bytes
         """
+
+        # Helper to safely call progress callback
+        def update_progress(progress: int, message: str = "") -> None:
+            if progress_callback:
+                try:
+                    progress_callback(progress, message)
+                except Exception as e:
+                    logger.warning(f"Progress callback failed: {e}")
+
+        update_progress(0, "Starting map generation")
+
         # Decode geometry if it's an encoded polyline string
+        update_progress(10, "Processing route geometry")
         decoded_geometry = self._process_geometry(geometry)
+
+        update_progress(20, "Checking map renderer availability")
 
         if not STATICMAP_AVAILABLE:
             logger.warning("staticmap not available, using fallback")
+            update_progress(30, "Using fallback renderer")
             return self._generate_fallback_map(
-                coordinates, segments, decoded_geometry, width, height
+                coordinates, segments, decoded_geometry, width, height, update_progress
             )
 
         try:
             return self._generate_with_staticmap(
-                coordinates, segments, decoded_geometry, width, height, route_data
+                coordinates,
+                segments,
+                decoded_geometry,
+                width,
+                height,
+                route_data,
+                update_progress,
             )
         except Exception as e:
             logger.error(f"Error generating map: {e}", exc_info=True)
+            update_progress(30, "Falling back to basic renderer")
             return self._generate_fallback_map(
-                coordinates, segments, decoded_geometry, width, height
+                coordinates, segments, decoded_geometry, width, height, update_progress
             )
 
     def _process_geometry(
@@ -213,8 +240,18 @@ class MapGenerator:
         width: int,
         height: int,
         route_data: Optional[dict[str, Any]] = None,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
     ) -> bytes:
         """Generate map using staticmap library with full route geometry."""
+
+        def update_progress(progress: int, message: str = "") -> None:
+            if progress_callback:
+                try:
+                    progress_callback(progress, message)
+                except Exception:
+                    pass
+
+        update_progress(25, "Initializing map renderer")
 
         # Create static map with OSM tiles
         m = staticmap.StaticMap(
@@ -223,6 +260,8 @@ class MapGenerator:
             url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
             tile_size=256,
         )
+
+        update_progress(30, "Drawing route line")
 
         # Draw the route
         route_drawn = False
@@ -258,6 +297,8 @@ class MapGenerator:
                 # Add direction arrows along the route
                 self._add_direction_markers(m, line_coords)
 
+        update_progress(40, "Processing waypoints")
+
         # Fallback: straight lines between waypoints if no geometry
         if not route_drawn and len(coordinates) >= 2:
             logger.warning(
@@ -274,8 +315,10 @@ class MapGenerator:
         # Extract all markers including intermediate stops
         markers = self._extract_all_markers(coordinates, segments, geometry)
 
+        update_progress(50, f"Adding {len(markers)} markers")
+
         # Add markers - small ones first, then main waypoints on top
-        for marker in sorted(markers, key=lambda m: m.get("priority", 0)):
+        for i, marker in enumerate(sorted(markers, key=lambda m: m.get("priority", 0))):
             color = self.MARKER_COLORS.get(marker["type"], {}).get("hex", "#808080")
             radius = marker.get("radius", self.MARKER_RADIUS)
 
@@ -295,6 +338,13 @@ class MapGenerator:
             )
             m.add_marker(circle)
 
+            # Update progress periodically
+            if i % 5 == 0:
+                progress = 50 + int((i / max(len(markers), 1)) * 20)
+                update_progress(progress, f"Adding marker {i + 1}/{len(markers)}")
+
+        update_progress(70, "Fetching map tiles and rendering")
+
         # Render the map
         try:
             image = m.render()
@@ -302,15 +352,21 @@ class MapGenerator:
             logger.error(f"Failed to render map: {e}")
             raise
 
+        update_progress(80, "Adding overlays")
+
         # Add overlays
         image = self._add_legend(image, markers, segments)
         image = self._add_route_info(image, coordinates, geometry, route_data)
         image = self._add_waypoint_labels(image, markers, m)
 
+        update_progress(90, "Encoding image")
+
         # Convert to bytes
         buf = io.BytesIO()
-        image.save(buf, format="PNG")
+        image.save(buf, format="PNG", optimize=True)
         buf.seek(0)
+
+        update_progress(100, "Map generation complete")
 
         logger.info(
             f"Generated route map: {route_points} points, {len(markers)} markers"
@@ -378,7 +434,6 @@ class MapGenerator:
             )
 
         # Extract intermediate stops from segments
-        # These need coordinates - estimate position along route if not provided
         route_coords = []
         if geometry and geometry.get("coordinates"):
             route_coords = geometry["coordinates"]
@@ -390,7 +445,6 @@ class MapGenerator:
             seg_type = seg.get("type", "")
 
             if seg_type in ["rest", "fuel", "break"]:
-                # Try to get coordinates from segment
                 seg_lat = seg.get("lat") or seg.get("latitude")
                 seg_lon = seg.get("lon") or seg.get("longitude")
 
@@ -406,9 +460,7 @@ class MapGenerator:
                         }
                     )
                 elif total_route_points > 0:
-                    # Estimate position along route based on segment order
                     segment_index += 1
-                    # This is a rough estimate - place stop proportionally along route
                     est_position = min(
                         int(total_route_points * segment_index / (len(segments) + 1)),
                         total_route_points - 1,
@@ -437,32 +489,23 @@ class MapGenerator:
         markers: list[dict[str, Any]],
         static_map: "staticmap.StaticMap",
     ) -> Image.Image:
-        """
-        Add text labels near waypoints.
-
-        Note: staticmap doesn't expose coordinate-to-pixel conversion,
-        so this is a simplified version that adds labels in corners.
-        """
+        """Add text labels near waypoints."""
         draw = ImageDraw.Draw(img)
         font = self._load_font(11)
 
-        # Add start/end labels in corners as reference
         main_markers = [m for m in markers if m.get("priority", 0) >= 10]
 
         if main_markers:
-            # Start label (top-left area, below legend)
             start = next((m for m in main_markers if m["type"] == "start"), None)
             if start:
                 label = f"▶ Start: {start['label'][:30]}"
                 draw.text((20, 220), label, fill=(34, 139, 34), font=font)
 
-            # End label
             end = next((m for m in main_markers if m["type"] == "dropoff"), None)
             if end:
                 label = f"◼ End: {end['label'][:30]}"
                 draw.text((20, 240), label, fill=(220, 20, 60), font=font)
 
-            # Pickup label
             pickup = next((m for m in main_markers if m["type"] == "pickup"), None)
             if pickup:
                 label = f"● Pickup: {pickup['label'][:30]}"
@@ -481,12 +524,10 @@ class MapGenerator:
         font = self._load_font(13)
         small_font = self._load_font(11)
 
-        # Legend position
         legend_x = img.width - 210
         legend_y = 20
         legend_width = 190
 
-        # Count marker types
         type_counts = {}
         for marker in markers:
             t = marker["type"]
@@ -494,7 +535,6 @@ class MapGenerator:
 
         legend_height = 70 + len(type_counts) * 26
 
-        # Background with shadow effect
         shadow_offset = 3
         draw.rectangle(
             [
@@ -513,7 +553,6 @@ class MapGenerator:
             width=1,
         )
 
-        # Title
         draw.text(
             (legend_x + 10, legend_y + 10),
             "Route Legend",
@@ -521,7 +560,6 @@ class MapGenerator:
             font=font,
         )
 
-        # Separator line
         draw.line(
             [
                 (legend_x + 10, legend_y + 32),
@@ -531,7 +569,6 @@ class MapGenerator:
             width=1,
         )
 
-        # Legend items
         y_offset = 42
         type_order = ["start", "pickup", "dropoff", "rest", "fuel", "break"]
 
@@ -542,12 +579,10 @@ class MapGenerator:
             count = type_counts[marker_type]
             color = self.MARKER_COLORS.get(marker_type, {}).get("rgb", (128, 128, 128))
 
-            # Color circle
             cx = legend_x + 20
             cy = legend_y + y_offset + 8
             r = 8
 
-            # White outline
             draw.ellipse(
                 [(cx - r - 1, cy - r - 1), (cx + r + 1, cy + r + 1)],
                 fill=(255, 255, 255),
@@ -555,7 +590,6 @@ class MapGenerator:
             )
             draw.ellipse([(cx - r, cy - r), (cx + r, cy + r)], fill=color)
 
-            # Label
             label_map = {
                 "start": "Start",
                 "pickup": "Pickup",
@@ -586,13 +620,11 @@ class MapGenerator:
         draw = ImageDraw.Draw(img)
         font = self._load_font(11)
 
-        # Info box at bottom-left
         info_x = 20
         info_y = img.height - 100
 
         info_lines = []
 
-        # Route accuracy info
         if geometry and geometry.get("coordinates"):
             num_points = len(geometry["coordinates"])
             info_lines.append(f"Route accuracy: {num_points:,} points")
@@ -602,7 +634,6 @@ class MapGenerator:
 
         info_lines.append(f"Waypoints: {len(coordinates)}")
 
-        # Add distance/duration if available in route_data
         if route_data:
             distance = route_data.get("total_distance") or route_data.get("distance")
             duration = route_data.get("total_duration") or route_data.get("duration")
@@ -618,12 +649,10 @@ class MapGenerator:
                     info_lines.append(f"Est. drive time: {hours}h {minutes}m")
 
         if info_lines:
-            # Calculate box size
             line_height = 18
             box_height = len(info_lines) * line_height + 16
             box_width = 220
 
-            # Background with shadow
             draw.rectangle(
                 [
                     (info_x + 2, info_y + 2),
@@ -637,15 +666,13 @@ class MapGenerator:
                 outline=(150, 150, 150),
             )
 
-            # Draw text
             for i, text in enumerate(info_lines):
                 y_pos = info_y + 8 + i * line_height
 
-                # Use checkmark/warning colors
                 if text.startswith("✓"):
-                    color = (34, 139, 34)  # Green
+                    color = (34, 139, 34)
                 elif text.startswith("⚠"):
-                    color = (200, 150, 0)  # Orange/yellow
+                    color = (200, 150, 0)
                 else:
                     color = (60, 60, 60)
 
@@ -660,8 +687,18 @@ class MapGenerator:
         geometry: Optional[dict[str, Any]],
         width: int,
         height: int,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
     ) -> bytes:
         """Generate a schematic map without external tile fetching."""
+
+        def update_progress(progress: int, message: str = "") -> None:
+            if progress_callback:
+                try:
+                    progress_callback(progress, message)
+                except Exception:
+                    pass
+
+        update_progress(35, "Creating fallback map")
 
         img = Image.new("RGB", (width, height), color=(250, 250, 250))
         draw = ImageDraw.Draw(img)
@@ -671,7 +708,8 @@ class MapGenerator:
                 width, height, "No coordinates provided"
             )
 
-        # Calculate bounds
+        update_progress(40, "Calculating bounds")
+
         all_points = [(c["lon"], c["lat"]) for c in coordinates]
 
         if geometry and geometry.get("coordinates"):
@@ -686,7 +724,6 @@ class MapGenerator:
         min_lon, max_lon = min(lons), max(lons)
         min_lat, max_lat = min(lats), max(lats)
 
-        # Add padding
         lon_padding = (max_lon - min_lon) * 0.12 or 1.0
         lat_padding = (max_lat - min_lat) * 0.12 or 1.0
 
@@ -695,7 +732,6 @@ class MapGenerator:
         min_lat -= lat_padding
         max_lat += lat_padding
 
-        # Map area dimensions
         margin = 50
         legend_width = 230
         map_width = width - legend_width - margin * 2
@@ -703,7 +739,8 @@ class MapGenerator:
         map_x = margin
         map_y = margin
 
-        # Draw map background with border
+        update_progress(50, "Drawing map background")
+
         draw.rectangle(
             [(map_x - 2, map_y - 2), (map_x + map_width + 2, map_y + map_height + 2)],
             fill=(200, 200, 200),
@@ -713,7 +750,6 @@ class MapGenerator:
             fill=(255, 255, 255),
         )
 
-        # Draw grid
         self._draw_grid(
             draw,
             map_x,
@@ -726,33 +762,31 @@ class MapGenerator:
             max_lat,
         )
 
-        # Coordinate conversion function
         def to_pixel(lon: float, lat: float) -> tuple[int, int]:
             x = map_x + int((lon - min_lon) / (max_lon - min_lon) * map_width)
             y = map_y + int((max_lat - lat) / (max_lat - min_lat) * map_height)
             return (x, y)
 
-        # Draw route geometry
+        update_progress(60, "Drawing route")
+
         if geometry and geometry.get("coordinates"):
             route_coords = geometry["coordinates"]
             if len(route_coords) >= 2:
                 points = [to_pixel(c[0], c[1]) for c in route_coords]
 
-                # Draw outline
                 for i in range(len(points) - 1):
                     draw.line([points[i], points[i + 1]], fill=(26, 82, 118), width=5)
 
-                # Draw main line
                 for i in range(len(points) - 1):
                     draw.line([points[i], points[i + 1]], fill=(51, 136, 255), width=3)
         else:
-            # Fallback: straight lines
             if len(coordinates) >= 2:
                 points = [to_pixel(c["lon"], c["lat"]) for c in coordinates]
                 for i in range(len(points) - 1):
                     draw.line([points[i], points[i + 1]], fill=(180, 180, 180), width=2)
 
-        # Draw markers
+        update_progress(70, "Drawing markers")
+
         markers = self._extract_all_markers(coordinates, segments, geometry)
         font = self._load_font(10)
 
@@ -763,23 +797,19 @@ class MapGenerator:
             )
             r = marker.get("radius", self.MARKER_RADIUS)
 
-            # White border
             draw.ellipse(
                 [(x - r - 2, y - r - 2), (x + r + 2, y + r + 2)],
                 fill=(255, 255, 255),
                 outline=(100, 100, 100),
             )
-            # Colored fill
             draw.ellipse([(x - r, y - r), (x + r, y + r)], fill=color)
 
-            # Label for main markers
             if marker.get("priority", 0) >= 10:
                 label = marker.get("label", "")[:20]
                 if label:
                     bbox = draw.textbbox((0, 0), label, font=font)
                     text_width = bbox[2] - bbox[0]
 
-                    # Background for label
                     label_x = x - text_width // 2
                     label_y = y + r + 4
                     draw.rectangle(
@@ -791,10 +821,10 @@ class MapGenerator:
                     )
                     draw.text((label_x, label_y), label, fill=(40, 40, 40), font=font)
 
-        # Add legend
+        update_progress(80, "Adding legend")
+
         img = self._add_legend(img, markers, segments)
 
-        # Add title
         title_font = self._load_font(16)
         draw = ImageDraw.Draw(img)
         title = "Trip Route Map"
@@ -802,9 +832,13 @@ class MapGenerator:
             title += " (Schematic)"
         draw.text((map_x + 10, map_y + 10), title, fill=(40, 40, 40), font=title_font)
 
+        update_progress(90, "Encoding image")
+
         buf = io.BytesIO()
-        img.save(buf, format="PNG")
+        img.save(buf, format="PNG", optimize=True)
         buf.seek(0)
+
+        update_progress(100, "Map generation complete")
 
         return buf.getvalue()
 
@@ -825,7 +859,6 @@ class MapGenerator:
         text_color = (180, 180, 180)
         font = self._load_font(8)
 
-        # Horizontal lines (latitude)
         num_lat_lines = 5
         for i in range(num_lat_lines + 1):
             y = map_y + int(i * map_height / num_lat_lines)
@@ -834,7 +867,6 @@ class MapGenerator:
             lat = max_lat - (i / num_lat_lines) * (max_lat - min_lat)
             draw.text((map_x + 3, y + 2), f"{lat:.2f}°", fill=text_color, font=font)
 
-        # Vertical lines (longitude)
         num_lon_lines = 6
         for i in range(num_lon_lines + 1):
             x = map_x + int(i * map_width / num_lon_lines)

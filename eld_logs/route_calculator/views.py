@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -14,10 +14,14 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from .models import TripCalculation
-from .serializers import TripCalculationSerializer, TripInputSerializer
+from .serializers import (
+    TripCalculationSerializer,
+    TripInputSerializer,
+    TripStatusSerializer,
+    MapStatusSerializer,
+)
 from .services.log_generator import LogGenerator
-from .services.map_generator import MapGenerator
-from .tasks import calculate_trip_task
+from .tasks import calculate_trip_task, generate_map_task
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +38,6 @@ logger = logging.getLogger(__name__)
         summary="Retrieve a trip calculation",
         description="Retrieve a single trip calculation by ID.",
         responses={200: TripCalculationSerializer},
-    ),
-    create=extend_schema(
-        tags=["Trips"],
-        summary="Create trip calculation (unused)",
-        description="Trip calculations are created via the calculate endpoint.",
-        exclude=True,
     ),
 )
 class TripCalculationViewSet(viewsets.ModelViewSet):
@@ -66,8 +64,9 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
             "- Route calculation (OpenRouteService)\n"
             "- FMCSA HOS compliance\n"
             "- ELD daily logs\n"
-            "- Route map generation\n\n"
-            "Returns immediately with a processing status."
+            "- Route map generation (async)\n\n"
+            "Returns immediately with a processing status.\n"
+            "Connect to WebSocket at `/ws/trips/{id}/progress/` for real-time updates."
         ),
         request=TripInputSerializer,
         responses={
@@ -79,6 +78,7 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
                         "id": {"type": "integer"},
                         "status": {"type": "string"},
                         "message": {"type": "string"},
+                        "websocket_url": {"type": "string"},
                     },
                 },
             ),
@@ -104,14 +104,201 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
 
         logger.info("Trip calculation initiated: %s", trip.id)
 
+        # Build WebSocket URL
+        ws_scheme = "wss" if request.is_secure() else "ws"
+        ws_url = f"{ws_scheme}://{request.get_host()}/ws/trips/{trip.id}/progress/"
+
         return Response(
             {
                 "id": trip.id,
                 "status": "processing",
-                "message": "Trip calculation started. Use the result endpoint to check status.",
+                "message": "Trip calculation started. Connect to WebSocket for real-time updates.",
+                "websocket_url": ws_url,
+                "polling_url": f"/api/trips/{trip.id}/status/",
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+    # =========================================================================
+    # Get Status (Enhanced for polling fallback)
+    # =========================================================================
+    @extend_schema(
+        tags=["Trips"],
+        summary="Get trip and map status",
+        description=(
+            "Get the current processing status of trip calculation and map generation.\n"
+            "Use this endpoint for polling if WebSocket is not available."
+        ),
+        responses={
+            200: TripStatusSerializer,
+            404: OpenApiResponse(description="Trip not found"),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="status")
+    def get_status(self, request: Request, pk: Any = None) -> Response:
+        """Get comprehensive trip and map status."""
+        trip = self.get_object()
+        return Response(
+            {
+                "id": trip.id,
+                "status": trip.status,
+                "progress": trip.progress,
+                "error_message": trip.error_message,
+                "map_status": trip.map_status,
+                "map_progress": trip.map_progress,
+                "map_error_message": trip.map_error_message,
+                "overall_progress": trip.overall_progress,
+                "is_completed": trip.is_completed,
+                "is_map_ready": trip.is_map_ready,
+                "total_distance": trip.total_distance,
+                "total_driving_time": trip.total_driving_time,
+                "map_url": trip.map_file.url if trip.map_file else None,
+            }
+        )
+
+    # =========================================================================
+    # Retry Map Generation
+    # =========================================================================
+    @extend_schema(
+        tags=["Maps"],
+        summary="Retry map generation",
+        description="Retry failed map generation for a completed trip.",
+        responses={
+            202: OpenApiResponse(description="Map generation restarted"),
+            400: OpenApiResponse(description="Trip not ready for map generation"),
+            404: OpenApiResponse(description="Trip not found"),
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="retry-map")
+    def retry_map(self, request: Request, pk: Any = None) -> Response:
+        """Retry failed map generation."""
+        trip = self.get_object()
+
+        if trip.status != TripCalculation.JobStatus.COMPLETED:
+            return Response(
+                {"error": "Trip calculation must be completed before generating map"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if trip.map_status == TripCalculation.MapStatus.GENERATING:
+            return Response(
+                {"error": "Map generation already in progress"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Reset map status and trigger new generation
+        trip.map_status = TripCalculation.MapStatus.GENERATING
+        trip.map_progress = 0
+        trip.map_error_message = None
+        trip.save(
+            update_fields=[
+                "map_status",
+                "map_progress",
+                "map_error_message",
+                "updated_at",
+            ]
+        )
+
+        task = generate_map_task.delay(trip.id)
+        trip.map_task_id = task.id
+        trip.save(update_fields=["map_task_id", "updated_at"])
+
+        return Response(
+            {
+                "id": trip.id,
+                "message": "Map generation restarted",
+                "map_task_id": task.id,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    # =========================================================================
+    # Download Route Map (Updated to serve from file or generate)
+    # =========================================================================
+    @extend_schema(
+        tags=["Maps"],
+        summary="Download route map",
+        description=(
+            "Download a PNG map visualizing the trip route.\n\n"
+            "If the map has been pre-generated, it's served from storage.\n"
+            "Returns 202 if map is still generating."
+        ),
+        responses={
+            200: OpenApiResponse(
+                description="PNG image",
+                response={"image/png": {"type": "string", "format": "binary"}},
+            ),
+            202: OpenApiResponse(description="Map is still generating"),
+            404: OpenApiResponse(description="Route data not available"),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="download-map")
+    def download_map(self, request: Request, pk: Any = None) -> HttpResponse:
+        """Download route map image."""
+        try:
+            trip = self.get_object()
+
+            # Check if map is ready
+            if trip.is_map_ready:
+                # Serve pre-generated map from storage
+                return FileResponse(
+                    trip.map_file.open("rb"),
+                    content_type="image/png",
+                    as_attachment=True,
+                    filename=f"route_map_trip_{trip.id}.png",
+                )
+
+            # Check if map is generating
+            if trip.map_status == TripCalculation.MapStatus.GENERATING:
+                return Response(
+                    {
+                        "status": "generating",
+                        "progress": trip.map_progress,
+                        "message": "Map is still being generated. Please try again later.",
+                    },
+                    status=status.HTTP_202_ACCEPTED,
+                )
+
+            # Check if map generation failed
+            if trip.map_status == TripCalculation.MapStatus.FAILED:
+                return Response(
+                    {
+                        "status": "failed",
+                        "error": trip.map_error_message or "Map generation failed",
+                        "retry_url": f"/api/trips/{trip.id}/retry-map/",
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            # Map hasn't been generated yet - trigger generation if trip is complete
+            if trip.is_completed:
+                task = generate_map_task.delay(trip.id)
+                trip.map_task_id = task.id
+                trip.map_status = TripCalculation.MapStatus.GENERATING
+                trip.save(update_fields=["map_task_id", "map_status", "updated_at"])
+
+                return Response(
+                    {
+                        "status": "generating",
+                        "progress": 0,
+                        "message": "Map generation started. Please try again in a few moments.",
+                    },
+                    status=status.HTTP_202_ACCEPTED,
+                )
+
+            return Response(
+                {"error": "Trip calculation not yet complete"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception as e:
+            logger.error("Error serving route map: %s", e, exc_info=True)
+            return Response(
+                {"error": "Error serving route map"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    # ... (keep other existing methods: download_log, result, summary, list_logs)
 
     # =========================================================================
     # Get Result
@@ -171,7 +358,6 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
 
             log_data = trip.logs_data[day - 1]
 
-            # Validate required fields
             required_fields = ["events", "date", "total_miles"]
             missing = [f for f in required_fields if f not in log_data]
             if missing:
@@ -180,30 +366,19 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Extract all log fields with defaults from log_data
-            driver_name = log_data.get("driver_name", "Driver Name")
-            carrier_name = log_data.get("carrier_name", "Carrier Name")
-            main_office = log_data.get("main_office", "Washington, D.C.")
-            co_driver = log_data.get("co_driver", "")
-            from_address = log_data.get("from_address", "")
-            to_address = log_data.get("to_address", "")
-            home_terminal_address = log_data.get("home_terminal_address", main_office)
-            truck_number = log_data.get("truck_number", "")
-            shipping_doc = log_data.get("shipping_doc", "")
-
             generator = LogGenerator()
             image_bytes = generator.generate_log_image(
                 log_data=log_data,
                 day_number=day,
-                driver_name=driver_name,
-                carrier_name=carrier_name,
-                main_office=main_office,
-                co_driver=co_driver,
-                from_address=from_address,
-                to_address=to_address,
-                home_terminal_address=home_terminal_address,
-                truck_number=truck_number,
-                shipping_doc=shipping_doc,
+                driver_name=log_data.get("driver_name", "Driver Name"),
+                carrier_name=log_data.get("carrier_name", "Carrier Name"),
+                main_office=log_data.get("main_office", "Washington, D.C."),
+                co_driver=log_data.get("co_driver", ""),
+                from_address=log_data.get("from_address", ""),
+                to_address=log_data.get("to_address", ""),
+                home_terminal_address=log_data.get("home_terminal_address", ""),
+                truck_number=log_data.get("truck_number", ""),
+                shipping_doc=log_data.get("shipping_doc", ""),
             )
 
             response = HttpResponse(image_bytes, content_type="image/png")
@@ -227,179 +402,18 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
             )
 
     # =========================================================================
-    # Download Route Map
-    # =========================================================================
-    @extend_schema(
-        tags=["Maps"],
-        summary="Download route map",
-        description=(
-            "Download a PNG map visualizing the trip route following actual roads. "
-            "The route geometry comes from OpenRouteService and shows the real path "
-            "the driver will take, not just straight lines between waypoints."
-        ),
-        responses={
-            200: OpenApiResponse(
-                description="PNG image",
-                response={"image/png": {"type": "string", "format": "binary"}},
-            ),
-            404: OpenApiResponse(description="Route data not available"),
-            400: OpenApiResponse(description="Invalid coordinates"),
-        },
-    )
-    @action(detail=True, methods=["get"], url_path="download-map")
-    def download_map(self, request: Request, pk: Any = None) -> HttpResponse:
-        """Download route map image with actual road geometry."""
-        try:
-            trip = self.get_object()
-
-            # Check if coordinates are available
-            if not trip.coordinates:
-                return Response(
-                    {"error": "Coordinates not available for this trip"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            # Extract and validate coordinates
-            current_coord = trip.coordinates.get("current", {})
-            pickup_coord = trip.coordinates.get("pickup", {})
-            dropoff_coord = trip.coordinates.get("dropoff", {})
-
-            # Validate each coordinate has required fields
-            for coord, name in [
-                (current_coord, "current"),
-                (pickup_coord, "pickup"),
-                (dropoff_coord, "dropoff"),
-            ]:
-                if "lat" not in coord or "lon" not in coord:
-                    return Response(
-                        {"error": f"Invalid {name} coordinates"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-            # Build coordinates list for map generator
-            coordinates = [
-                {
-                    "lat": current_coord["lat"],
-                    "lon": current_coord["lon"],
-                    "name": current_coord.get("name", "Start"),
-                },
-                {
-                    "lat": pickup_coord["lat"],
-                    "lon": pickup_coord["lon"],
-                    "name": pickup_coord.get("name", "Pickup"),
-                },
-                {
-                    "lat": dropoff_coord["lat"],
-                    "lon": dropoff_coord["lon"],
-                    "name": dropoff_coord.get("name", "Dropoff"),
-                },
-            ]
-
-            # Get segments and geometry from route_data
-            segments = []
-            geometry = None
-
-            if trip.route_data:
-                segments = trip.route_data.get("segments", [])
-                # This is the actual road geometry from OpenRouteService!
-                # It contains the polyline that follows real roads
-                geometry = trip.route_data.get("geometry")
-
-            # Generate map with actual route geometry
-            generator = MapGenerator()
-            image_bytes = generator.generate_route_map(
-                coordinates=coordinates,
-                segments=segments,
-                geometry=geometry,  # Pass the ORS geometry for road-following route
-            )
-
-            response = HttpResponse(image_bytes, content_type="image/png")
-            response["Content-Disposition"] = (
-                f'attachment; filename="route_map_trip_{trip.id}.png"'
-            )
-
-            logger.info(
-                "Route map downloaded: Trip %s (geometry: %s)",
-                trip.id,
-                "yes" if geometry else "no",
-            )
-            return response
-
-        except Exception as e:
-            logger.error("Error generating route map: %s", e, exc_info=True)
-            return Response(
-                {"error": "Error generating route map"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-    # =========================================================================
-    # Get Trip Status
-    # =========================================================================
-    @extend_schema(
-        tags=["Trips"],
-        summary="Get trip status",
-        description="Get the current processing status of a trip calculation.",
-        responses={
-            200: OpenApiResponse(
-                description="Trip status",
-                response={
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "integer"},
-                        "status": {"type": "string"},
-                        "error_message": {"type": "string", "nullable": True},
-                    },
-                },
-            ),
-            404: OpenApiResponse(description="Trip not found"),
-        },
-    )
-    @action(detail=True, methods=["get"], url_path="status")
-    def get_status(self, request: Request, pk: Any = None) -> Response:
-        """Get trip calculation status."""
-        trip = self.get_object()
-        return Response(
-            {
-                "id": trip.id,
-                "status": trip.status,
-                "error_message": trip.error_message,
-            }
-        )
-
-    # =========================================================================
     # Get Trip Summary
     # =========================================================================
     @extend_schema(
         tags=["Trips"],
         summary="Get trip summary",
         description="Get a summary of the trip including distances and times.",
-        responses={
-            200: OpenApiResponse(
-                description="Trip summary",
-                response={
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "integer"},
-                        "status": {"type": "string"},
-                        "current_location": {"type": "string"},
-                        "pickup_location": {"type": "string"},
-                        "dropoff_location": {"type": "string"},
-                        "total_distance": {"type": "number", "nullable": True},
-                        "total_driving_time": {"type": "number", "nullable": True},
-                        "total_trip_time": {"type": "number", "nullable": True},
-                        "num_days": {"type": "integer"},
-                        "created_at": {"type": "string", "format": "date-time"},
-                    },
-                },
-            ),
-            404: OpenApiResponse(description="Trip not found"),
-        },
+        responses={200: OpenApiResponse(description="Trip summary")},
     )
     @action(detail=True, methods=["get"], url_path="summary")
     def summary(self, request: Request, pk: Any = None) -> Response:
         """Get trip summary."""
         trip = self.get_object()
-
         num_days = len(trip.logs_data) if trip.logs_data else 0
 
         return Response(
@@ -413,6 +427,8 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
                 "total_driving_time": trip.total_driving_time,
                 "total_trip_time": trip.total_trip_time,
                 "num_days": num_days,
+                "map_status": trip.map_status,
+                "is_map_ready": trip.is_map_ready,
                 "created_at": trip.created_at.isoformat(),
             }
         )
@@ -424,31 +440,7 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
         tags=["Logs"],
         summary="List daily logs",
         description="Get a list of all daily logs for a trip with basic info.",
-        responses={
-            200: OpenApiResponse(
-                description="List of daily logs",
-                response={
-                    "type": "object",
-                    "properties": {
-                        "trip_id": {"type": "integer"},
-                        "total_days": {"type": "integer"},
-                        "logs": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "day": {"type": "integer"},
-                                    "date": {"type": "string"},
-                                    "total_miles": {"type": "number"},
-                                    "download_url": {"type": "string"},
-                                },
-                            },
-                        },
-                    },
-                },
-            ),
-            404: OpenApiResponse(description="Trip not found or no logs available"),
-        },
+        responses={200: OpenApiResponse(description="List of daily logs")},
     )
     @action(detail=True, methods=["get"], url_path="logs")
     def list_logs(self, request: Request, pk: Any = None) -> Response:
