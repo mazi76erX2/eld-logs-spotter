@@ -1,0 +1,89 @@
+// .vscode/settings.json
+{
+    // Python settings
+    "python.defaultInterpreterPath": "${workspaceFolder}/eld_logs/.venv/bin/python",
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/eld_logs"
+    ],
+
+    // Testing
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "-v",
+        "--tb=short"
+    ],
+    "python.testing.cwd": "${workspaceFolder}/eld_logs",
+
+    // Formatting
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit",
+        "source.organizeImports": "explicit"
+    },
+
+    // // Ruff (linting + formatting)
+    // "[python]": {
+    //     "editor.defaultFormatter": "charliermarsh.ruff",
+    //     "editor.formatOnSave": true,
+    //     "editor.codeActionsOnSave": {
+    //         "source.fixAll.ruff": "explicit",
+    //         "source.organizeImports.ruff": "explicit"
+    //     }
+    // },
+
+    // Pylint
+    "pylint.path": ["${workspaceFolder}/eld_logs/.venv/bin/pylint"],
+    "pylint.args": [
+        "--load-plugins=pylint_django",
+        "--django-settings-module=eld_logs.settings.local",
+        "--rcfile=${workspaceFolder}/eld_logs/.pylintrc"
+    ],
+
+    // MyPy
+    "mypy-type-checker.path": ["${workspaceFolder}/eld_logs/.venv/bin/mypy"],
+    "mypy-type-checker.args": [
+        "--config-file=${workspaceFolder}/eld_logs/pyproject.toml"
+    ],
+
+    // Django
+    "files.associations": {
+        "*.html": "django-html",
+        "**/templates/**/*.html": "django-html"
+    },
+
+    // File exclusions
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/.pytest_cache": true,
+        "**/.mypy_cache": true,
+        "**/.ruff_cache": true,
+        "**/htmlcov": true,
+        "**/.coverage": true
+    },
+
+    // Search exclusions
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/staticfiles": true,
+        "**/htmlcov": true,
+        "**/.venv": true
+    },
+
+    // Terminal
+    "terminal.integrated.cwd": "${workspaceFolder}/eld_logs",
+    "terminal.integrated.env.linux": {
+        "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+        "PYTHONPATH": "${workspaceFolder}/eld_logs"
+    },
+    "terminal.integrated.env.osx": {
+        "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+        "PYTHONPATH": "${workspaceFolder}/eld_logs"
+    },
+    "terminal.integrated.env.windows": {
+        "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+        "PYTHONPATH": "${workspaceFolder}/eld_logs"
+    }
+}

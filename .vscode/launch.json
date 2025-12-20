@@ -1,0 +1,197 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Django: Run Server",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/eld_logs/manage.py",
+            "args": ["runserver", "0.0.0.0:8000"],
+            "django": true,
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+                "PYTHONPATH": "${workspaceFolder}/eld_logs"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Django: ASGI (uvicorn)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "eld_logs.asgi:application",
+                "--host", "0.0.0.0",
+                "--port", "8000",
+                "--reload"
+            ],
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+                "PYTHONPATH": "${workspaceFolder}/eld_logs"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Django: Shell",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/eld_logs/manage.py",
+            "args": ["shell"],
+            "django": true,
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Celery: Worker",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "celery",
+            "args": [
+                "-A", "eld_logs",
+                "worker",
+                "--loglevel=DEBUG",
+                "--queues=default,maps",
+                "--concurrency=1"
+            ],
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+                "PYTHONPATH": "${workspaceFolder}/eld_logs"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Celery: Beat",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "celery",
+            "args": [
+                "-A", "eld_logs",
+                "beat",
+                "--loglevel=DEBUG"
+            ],
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+                "PYTHONPATH": "${workspaceFolder}/eld_logs"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Pytest: All Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "-v",
+                "--tb=short",
+                "-x"
+            ],
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+                "PYTHONPATH": "${workspaceFolder}/eld_logs"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Pytest: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "-v",
+                "--tb=short",
+                "${file}"
+            ],
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+                "PYTHONPATH": "${workspaceFolder}/eld_logs"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Pytest: With Coverage",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "-v",
+                "--cov=route_calculator",
+                "--cov-report=html",
+                "--cov-report=term-missing"
+            ],
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
+                "PYTHONPATH": "${workspaceFolder}/eld_logs"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Django: Migrate",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/eld_logs/manage.py",
+            "args": ["migrate"],
+            "django": true,
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Django: Make Migrations",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/eld_logs/manage.py",
+            "args": ["makemigrations"],
+            "django": true,
+            "cwd": "${workspaceFolder}/eld_logs",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Docker: Attach to Web",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}/eld_logs",
+                    "remoteRoot": "/app"
+                }
+            ],
+            "justMyCode": false
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Django + Celery",
+            "configurations": ["Django: ASGI (uvicorn)", "Celery: Worker"],
+            "stopAll": true
+        },
+        {
+            "name": "Full Stack (Django + Celery + Beat)",
+            "configurations": ["Django: ASGI (uvicorn)", "Celery: Worker", "Celery: Beat"],
+            "stopAll": true
+        }
+    ]
+}

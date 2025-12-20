@@ -1,0 +1,270 @@
+# docker-compose.yml
+
+services:
+  # ==========================================================================
+  # PostgreSQL Database
+  # ==========================================================================
+  db:
+    image: postgres:18-alpine
+    container_name: eld_postgres
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-eld_db}
+      POSTGRES_USER: ${DATABASE_USERNAME:-eld_user}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-eld_password_123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DATABASE_USERNAME:-eld_user} -d ${DATABASE_NAME:-eld_db}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eld_network
+
+  # ==========================================================================
+  # Redis
+  # ==========================================================================
+  redis:
+    image: redis:8.4.0-alpine
+    container_name: eld_redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eld_network
+
+  # ==========================================================================
+  # Django Web Application
+  # ==========================================================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: eld_web
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             uvicorn eld_logs.asgi:application --host 0.0.0.0 --port 8000 --reload --reload-dir ."
+    environment:
+      - DEBUG=${DEBUG:-True}
+      - DATABASE_ENGINE=postgresql
+      - DATABASE_NAME=${DATABASE_NAME:-eld_db}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-eld_user}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-eld_password_123}
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-eld_logs.settings.local}
+      - OPENROUTESERVICE_API_KEY=${OPENROUTESERVICE_API_KEY:-}
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,web
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - logs_volume:/app/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eld_network
+    develop:
+      watch:
+        - action: sync
+          path: ./route_calculator
+          target: /app/route_calculator
+        - action: sync
+          path: ./eld_logs
+          target: /app/eld_logs
+        - action: rebuild
+          path: ./pyproject.toml
+        - action: rebuild
+          path: ./requirements.txt
+
+  # ==========================================================================
+  # Celery Worker (Default Queue)
+  # ==========================================================================
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: eld_celery_worker
+    command: >
+      celery -A eld_logs worker 
+      --loglevel=INFO 
+      --queues=default 
+      --concurrency=2
+      --max-tasks-per-child=100
+    environment:
+      - DEBUG=${DEBUG:-True}
+      - DATABASE_ENGINE=postgresql
+      - DATABASE_NAME=${DATABASE_NAME:-eld_db}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-eld_user}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-eld_password_123}
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-eld_logs.settings.local}
+      - OPENROUTESERVICE_API_KEY=${OPENROUTESERVICE_API_KEY:-}
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+      - logs_volume:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eld_network
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./route_calculator
+          target: /app/route_calculator
+        - action: sync+restart
+          path: ./eld_logs
+          target: /app/eld_logs
+
+  # ==========================================================================
+  # Celery Worker (Maps Queue - Long Running Tasks)
+  # ==========================================================================
+  celery_worker_maps:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: eld_celery_worker_maps
+    command: >
+      celery -A eld_logs worker 
+      --loglevel=INFO 
+      --queues=maps 
+      --concurrency=1
+      --max-tasks-per-child=50
+    environment:
+      - DEBUG=${DEBUG:-True}
+      - DATABASE_ENGINE=postgresql
+      - DATABASE_NAME=${DATABASE_NAME:-eld_db}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-eld_user}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-eld_password_123}
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-eld_logs.settings.local}
+      - OPENROUTESERVICE_API_KEY=${OPENROUTESERVICE_API_KEY:-}
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+      - logs_volume:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eld_network
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./route_calculator
+          target: /app/route_calculator
+
+  # ==========================================================================
+  # Celery Beat (Scheduled Tasks)
+  # ==========================================================================
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: eld_celery_beat
+    command: celery -A eld_logs beat --loglevel=INFO
+    environment:
+      - DEBUG=${DEBUG:-True}
+      - DATABASE_ENGINE=postgresql
+      - DATABASE_NAME=${DATABASE_NAME:-eld_db}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-eld_user}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-eld_password_123}
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-eld_logs.settings.local}
+    volumes:
+      - .:/app
+      - logs_volume:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eld_network
+
+  # ==========================================================================
+  # Nginx (Reverse Proxy)
+  # ==========================================================================
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: eld_nginx
+    ports:
+      - "8080:80"
+      # - "443:443"  # Uncomment for HTTPS
+    volumes:
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+      # - ./nginx/ssl:/etc/nginx/ssl:ro  # Uncomment for HTTPS
+    depends_on:
+      - web
+    networks:
+      - eld_network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health/",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  static_volume:
+    driver: local
+  media_volume:
+    driver: local
+  logs_volume:
+    driver: local
+
+networks:
+  eld_network:
+    driver: bridge
