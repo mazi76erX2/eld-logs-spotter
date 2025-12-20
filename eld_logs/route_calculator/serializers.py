@@ -6,6 +6,11 @@ from .models import TripCalculation
 class TripCalculationSerializer(serializers.ModelSerializer):
     """Serializer for TripCalculation model."""
 
+    is_completed = serializers.BooleanField(read_only=True)
+    is_map_ready = serializers.BooleanField(read_only=True)
+    overall_progress = serializers.IntegerField(read_only=True)
+    map_url = serializers.SerializerMethodField()
+
     class Meta:
         model = TripCalculation
         fields = [
@@ -23,7 +28,15 @@ class TripCalculationSerializer(serializers.ModelSerializer):
             "logs_data",
             "coordinates",
             "status",
+            "progress",
             "error_message",
+            "map_status",
+            "map_progress",
+            "map_error_message",
+            "is_completed",
+            "is_map_ready",
+            "overall_progress",
+            "map_url",
         ]
         read_only_fields = [
             "id",
@@ -36,8 +49,21 @@ class TripCalculationSerializer(serializers.ModelSerializer):
             "logs_data",
             "coordinates",
             "status",
+            "progress",
             "error_message",
+            "map_status",
+            "map_progress",
+            "map_error_message",
         ]
+
+    def get_map_url(self, obj: TripCalculation) -> str | None:
+        """Get the URL for the map file if it exists."""
+        if obj.map_file:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.map_file.url)
+            return obj.map_file.url
+        return None
 
 
 class TripInputSerializer(serializers.Serializer):
@@ -58,6 +84,56 @@ class TripInputSerializer(serializers.Serializer):
                 "Current cycle hours must be between 0 and 70"
             )
         return value
+
+    def validate_current_location(self, value: str) -> str:
+        """Validate current location is not empty."""
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Current location cannot be empty")
+        return value
+
+    def validate_pickup_location(self, value: str) -> str:
+        """Validate pickup location is not empty."""
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Pickup location cannot be empty")
+        return value
+
+    def validate_dropoff_location(self, value: str) -> str:
+        """Validate dropoff location is not empty."""
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Dropoff location cannot be empty")
+        return value
+
+
+class TripStatusSerializer(serializers.Serializer):
+    """Serializer for trip status response."""
+
+    id = serializers.IntegerField()
+    status = serializers.CharField()
+    progress = serializers.IntegerField()
+    error_message = serializers.CharField(allow_null=True)
+    map_status = serializers.CharField()
+    map_progress = serializers.IntegerField()
+    map_error_message = serializers.CharField(allow_null=True)
+    overall_progress = serializers.IntegerField()
+    is_completed = serializers.BooleanField()
+    is_map_ready = serializers.BooleanField()
+    total_distance = serializers.FloatField(allow_null=True)
+    total_driving_time = serializers.FloatField(allow_null=True)
+    map_url = serializers.CharField(allow_null=True)
+
+
+class MapStatusSerializer(serializers.Serializer):
+    """Serializer for map generation status."""
+
+    trip_id = serializers.IntegerField()
+    map_status = serializers.CharField()
+    map_progress = serializers.IntegerField()
+    map_error_message = serializers.CharField(allow_null=True)
+    is_map_ready = serializers.BooleanField()
+    map_url = serializers.CharField(allow_null=True)
 
 
 class TripResultSerializer(serializers.Serializer):
