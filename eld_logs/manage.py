@@ -3,10 +3,17 @@
 import os
 import sys
 
+from decouple import config
+
+DJANGO_SETTINGS_MODULE: str = config(
+    "DJANGO_SETTINGS_MODULE",
+    default="eld_logs.settings.local",
+)
+
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "eld_logs.settings.local")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", DJANGO_SETTINGS_MODULE)
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
