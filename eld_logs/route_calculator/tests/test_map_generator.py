@@ -118,18 +118,19 @@ class TestMapGenerator:
         assert len(image_bytes) > 0
 
     def test_extract_markers_assigns_types(self):
-        """Test that marker types are correctly assigned."""
+        """Test that markers are assigned correct types."""
         from route_calculator.services.map_generator import MapGenerator
 
         gen = MapGenerator()
-
         coordinates = [
-            {"lat": 40.0, "lon": -74.0, "name": "Start"},
-            {"lat": 41.0, "lon": -75.0, "name": "Middle"},
-            {"lat": 42.0, "lon": -76.0, "name": "End"},
+            {"lat": 40.7128, "lon": -74.0060, "name": "Start", "type": "start"},
+            {"lat": 40.7580, "lon": -73.9855, "name": "Stop", "type": "fuel"},
+            {"lat": 40.7484, "lon": -73.9857, "name": "End", "type": "end"},
         ]
+        # Empty geometry list for this test
+        geometry = []
 
-        markers = gen._extract_markers(coordinates, [])
+        markers = gen._extract_all_markers(coordinates, [], geometry)
 
         assert len(markers) == 3
         assert markers[0]["type"] == "start"
