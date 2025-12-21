@@ -34,11 +34,24 @@ class StorageService:
         """
         Upload an image and return the URL.
         """
+        # Debug logging
+        logger.info(
+            f"[StorageService] is_cloudinary_enabled: {cls.is_cloudinary_enabled()}"
+        )
+        logger.info(
+            f"[StorageService] STORAGE_BACKEND: {getattr(settings, 'STORAGE_BACKEND', 'not set')}"
+        )
+        logger.info(
+            f"[StorageService] CLOUDINARY_STORAGE: {getattr(settings, 'CLOUDINARY_STORAGE', 'not set')}"
+        )
+
         if cls.is_cloudinary_enabled():
+            logger.info("[StorageService] Uploading to Cloudinary...")
             return cls._upload_to_cloudinary(
                 image_bytes, filename, folder, resource_type
             )
         else:
+            logger.info("[StorageService] Saving locally...")
             return cls._save_locally(image_bytes, filename, folder)
 
     @classmethod

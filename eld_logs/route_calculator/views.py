@@ -239,14 +239,10 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
             trip = self.get_object()
 
             # Check if map is ready
-            if trip.is_map_ready:
-                # Serve pre-generated map from storage
-                return FileResponse(
-                    trip.map_file.open("rb"),
-                    content_type="image/png",
-                    as_attachment=True,
-                    filename=f"route_map_trip_{trip.id}.png",
-                )
+            if trip.is_map_ready and trip.map_url:
+                # Redirect to the map URL (Cloudinary or local)
+                from django.shortcuts import redirect
+                return redirect(trip.map_url)
 
             # Check if map is generating
             if trip.map_status == TripCalculation.MapStatus.GENERATING:
@@ -297,8 +293,6 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
                 {"error": "Error serving route map"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-    # ... (keep other existing methods: download_log, result, summary, list_logs)
 
     # =========================================================================
     # Get Result

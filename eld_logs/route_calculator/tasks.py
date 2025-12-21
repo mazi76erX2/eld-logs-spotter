@@ -11,6 +11,8 @@ from .models import TripCalculation
 from .services.hos_calculator import HOSCalculator
 from .services.map_generator import MapGenerator
 from .services.route_service import RouteService
+from .services.storage_service import StorageService
+
 
 logger = logging.getLogger(__name__)
 
@@ -334,7 +336,7 @@ def generate_map_task(self, trip_id: int) -> Optional[str]:
         trip_id: ID of TripCalculation instance
 
     Returns:
-        Map file path if successful, None otherwise
+        Map URL if successful, None otherwise
     """
     try:
         trip = TripCalculation.objects.get(id=trip_id)
@@ -469,18 +471,28 @@ def generate_map_task(self, trip_id: int) -> Optional[str]:
             },
         )
 
-        # Save map file
+        # Import StorageService
+        from .services.storage_service import StorageService
+
+        # Upload map using StorageService
         filename = f"route_map_trip_{trip_id}.png"
-        trip.map_file.save(filename, ContentFile(image_bytes), save=False)
-        trip.map_status = TripCalculation.MapStatus.COMPLETED
-        trip.map_progress = 100
-        trip.save(
-            update_fields=["map_file", "map_status", "map_progress", "updated_at"]
+        map_url = StorageService.upload_image(
+            image_bytes=image_bytes,
+            filename=filename,
+            folder="maps",
+            resource_type="image",
         )
 
-        logger.info(
-            "Map generation completed for trip %s: %s", trip_id, trip.map_file.url
-        )
+        if not map_url:
+            raise ValueError("Failed to upload map to storage")
+
+        # Save the URL to the model
+        trip.map_url = map_url
+        trip.map_status = TripCalculation.MapStatus.COMPLETED
+        trip.map_progress = 100
+        trip.save(update_fields=["map_url", "map_status", "map_progress", "updated_at"])
+
+        logger.info("Map generation completed for trip %s: %s", trip_id, map_url)
 
         send_progress_update(
             trip_id,
@@ -489,11 +501,12 @@ def generate_map_task(self, trip_id: int) -> Optional[str]:
                 "status": "completed",
                 "map_progress": 100,
                 "message": "Map generation completed!",
-                "map_url": trip.map_file.url if trip.map_file else None,
+                "map_url": map_url,
+                "is_map_ready": True,
             },
         )
 
-        return trip.map_file.name
+        return map_url
 
     except TripCalculation.DoesNotExist:
         logger.error("Trip %s not found for map generation", trip_id)

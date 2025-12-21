@@ -98,18 +98,17 @@ class TripCalculation(models.Model):
     @property
     def is_map_ready(self) -> bool:
         """Check if map is ready for download."""
-        return (
-            self.map_status == self.MapStatus.COMPLETED
-            and bool(self.map_file)
-            and self.map_file.name
-        )
+        return self.map_status == self.MapStatus.COMPLETED and bool(self.map_url)
 
     def get_map_url(self) -> Optional[str]:
         """Get the map URL (Cloudinary or local)."""
         if self.map_url:
             return self.map_url
         if self.map_file and self.map_file.name:
-            return self.map_file.url
+            try:
+                return self.map_file.url
+            except ValueError:
+                return None
         return None
 
     @property
