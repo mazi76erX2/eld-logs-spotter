@@ -277,6 +277,20 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudinary"
+version = "1.44.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "six" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/32/35/938a4cc3b5ac386184a8ea50e357cdbb4239c2744fc8c652c461674447e6/cloudinary-1.44.1.tar.gz", hash = "sha256:62d4374b79d5476de2a86cb6a1da709a5429e02aef474bfc5d99f3e38a1a62ff", size = 188225, upload-time = "2025-06-17T16:31:33.279Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/f0/518d151d3dfc009940947fe9b26cdf9f6e2fb9e4a29c12fe5b5ebe8aad65/cloudinary-1.44.1-py3-none-any.whl", hash = "sha256:b4785031179a5ec7010f46665e5c8fad2cae022c18405546f01d257e02f78b1c", size = 147808, upload-time = "2025-06-17T16:31:32.188Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -427,6 +441,19 @@ wheels = [
 ]
 
 [[package]]
+name = "django-cloudinary-storage"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cloudinary" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/da/6072905410b869566d3cb9f6706803d0a9d2052d90e0b8ed783031acdb6d/django-cloudinary-storage-0.3.0.tar.gz", hash = "sha256:debd403a5f225c9d35c4af508ff4abc7fdc262129464134b60b2feeb2c44d3e1", size = 21669, upload-time = "2020-08-23T22:19:57.854Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/e2/e52f63ddafa0985e2af70197c4d3e18963d0ea854083fc23705b88014891/django_cloudinary_storage-0.3.0-py3-none-any.whl", hash = "sha256:95c855c7334141b2a485ea7eb5716de87bb6ce0d848e205debb3a3ab7bbbd49a", size = 18866, upload-time = "2020-08-23T22:19:55.767Z" },
+]
+
+[[package]]
 name = "django-cors-headers"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -520,8 +547,10 @@ dependencies = [
     { name = "celery" },
     { name = "channels" },
     { name = "channels-redis" },
+    { name = "cloudinary" },
     { name = "django" },
     { name = "django-celery-results" },
+    { name = "django-cloudinary-storage" },
     { name = "django-cors-headers" },
     { name = "djangorestframework" },
     { name = "drf-spectacular" },
@@ -562,8 +591,10 @@ requires-dist = [
     { name = "celery", specifier = "==5.6.0" },
     { name = "channels", specifier = ">=4.3.2" },
     { name = "channels-redis", specifier = ">=4.3.0" },
+    { name = "cloudinary", specifier = ">=1.36.0" },
     { name = "django", specifier = "==6.0.0" },
     { name = "django-celery-results", specifier = ">=2.6.0" },
+    { name = "django-cloudinary-storage", specifier = ">=0.3.0" },
     { name = "django-cors-headers", specifier = "==4.9.0" },
     { name = "djangorestframework", specifier = "==3.16.1" },
     { name = "drf-spectacular", specifier = "==0.29.0" },

@@ -73,6 +73,9 @@ services:
       - OPENROUTESERVICE_API_KEY=${OPENROUTESERVICE_API_KEY:-}
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,web
       - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
@@ -126,6 +129,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-eld_logs.settings.local}
       - OPENROUTESERVICE_API_KEY=${OPENROUTESERVICE_API_KEY:-}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
     volumes:
       - .:/app
       - media_volume:/app/media
@@ -172,6 +178,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-eld_logs.settings.local}
       - OPENROUTESERVICE_API_KEY=${OPENROUTESERVICE_API_KEY:-}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
     volumes:
       - .:/app
       - media_volume:/app/media
@@ -209,6 +218,9 @@ services:
       - DATABASE_PORT=5432
       - REDIS_URL=redis://redis:6379/0
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-eld_logs.settings.local}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
     volumes:
       - .:/app
       - logs_volume:/app/logs
