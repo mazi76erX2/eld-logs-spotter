@@ -106,9 +106,10 @@ class RouteService:
             feature = route["features"][0]
             summary = feature.get("properties", {}).get("summary", {})
 
-            # Convert meters to miles and seconds to hours
-            distance_miles = summary.get("distance", 0) / 1609.34
-            duration_hours = summary.get("duration", 0) / 3600.0
+            # Distance is already in miles (we set units="mi" in the request)
+            # Duration is always in seconds
+            distance_miles = summary.get("distance", 0)  # Already in miles!
+            duration_hours = summary.get("duration", 0) / 3600.0  # Seconds to hours
 
             legs.append(
                 {

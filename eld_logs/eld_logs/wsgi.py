@@ -9,9 +9,8 @@ https://docs.djangoproject.com/en/6.0/howto/deployment/wsgi/
 
 import os
 
-from django.core.wsgi import get_wsgi_application
-
 from decouple import config
+from django.core.wsgi import get_wsgi_application
 
 DJANGO_SETTINGS_MODULE: str = config(
     "DJANGO_SETTINGS_MODULE",

@@ -22,9 +22,12 @@ dependencies = [
     "channels>=4.3.2",
     "channels-redis>=4.3.0",
     "uvicorn>=0.38.0",
+    "django-celery-results>=2.6.0",
+    "websockets>=15.0.1",
+    "whitenoise>=6.11.0",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=9.0.2",
     "pytest-django>=4.11.1",
@@ -35,11 +38,13 @@ dev = [
     "mypy>=1.19.1",
     "django-stubs>=5.2.8",
     "djangorestframework-stubs>=3.16.6",
+    "factory-boy==3.3.3",
+    "pytest-mock>=3.15.1",
+    "daphne>=1.7.0",
 ]
 
 prod = [
     "gunicorn>=23.0.0",
-    "whitenoise>=6.11.0",
 ]
 
 [tool.uv]
@@ -55,6 +60,7 @@ strict = true
 django_settings_module = "eld_logs.settings.local"
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "eld_logs.settings.local"
+DJANGO_SETTINGS_MODULE = "eld_logs.settings.test"
 python_files = ["test_*.py", "*_test.py"]
 addopts = "-v --tb=short"
+asyncio_mode = "auto"

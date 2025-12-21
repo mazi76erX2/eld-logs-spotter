@@ -1,4 +1,5 @@
 from typing import Any
+
 from django.db import models
 
 
@@ -91,7 +92,11 @@ class TripCalculation(models.Model):
     @property
     def is_map_ready(self) -> bool:
         """Check if map is ready for download."""
-        return self.map_status == self.MapStatus.COMPLETED and self.map_file
+        return (
+            self.map_status == self.MapStatus.COMPLETED
+            and bool(self.map_file)
+            and self.map_file.name
+        )
 
     @property
     def overall_progress(self) -> int:

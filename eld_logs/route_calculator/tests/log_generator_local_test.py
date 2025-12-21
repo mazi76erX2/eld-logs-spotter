@@ -1,4 +1,4 @@
-from log_generator import LogGenerator
+from route_calculator.services.log_generator import LogGenerator
 
 log_data = {
     "date": "04/09/2021",

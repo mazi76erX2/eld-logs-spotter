@@ -180,6 +180,97 @@
                 }
             ],
             "justMyCode": false
+        },
+        {
+            "name": "Next.js: Dev Server",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/eld_logs_frontend",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "dev"],
+            "console": "integratedTerminal",
+            "serverReadyAction": {
+                "pattern": "- Local:.+(https?://.+)",
+                "uriFormat": "%s",
+                "action": "openExternally"
+            },
+            "env": {
+                "NODE_OPTIONS": "--inspect"
+            }
+        },
+        {
+            "name": "Next.js: Build",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/eld_logs_frontend",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "build"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Next.js: Production Server",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/eld_logs_frontend",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "start"],
+            "console": "integratedTerminal",
+            "serverReadyAction": {
+                "pattern": "- Local:.+(https?://.+)",
+                "uriFormat": "%s",
+                "action": "openExternally"
+            }
+        },
+        {
+            "name": "Next.js: Debug Server-Side",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/eld_logs_frontend",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "dev"],
+            "console": "integratedTerminal",
+            "env": {
+                "NODE_OPTIONS": "--inspect"
+            }
+        },
+        {
+            "name": "Next.js: Debug Client-Side (Chrome)",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:3000",
+            "webRoot": "${workspaceFolder}/eld_logs_frontend",
+            "sourceMaps": true,
+            "sourceMapPathOverrides": {
+                "webpack://_N_E/*": "${webRoot}/*"
+            }
+        },
+        {
+            "name": "Next.js: Debug Client-Side (Edge)",
+            "type": "msedge",
+            "request": "launch",
+            "url": "http://localhost:3000",
+            "webRoot": "${workspaceFolder}/eld_logs_frontend",
+            "sourceMaps": true,
+            "sourceMapPathOverrides": {
+                "webpack://_N_E/*": "${webRoot}/*"
+            }
+        },
+        {
+            "name": "Next.js: Debug Full Stack",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/eld_logs_frontend",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "dev"],
+            "console": "integratedTerminal",
+            "serverReadyAction": {
+                "pattern": "- Local:.+(https?://.+)",
+                "uriFormat": "%s",
+                "action": "debugWithChrome"
+            },
+            "env": {
+                "NODE_OPTIONS": "--inspect"
+            }
         }
     ],
     "compounds": [
@@ -189,8 +280,23 @@
             "stopAll": true
         },
         {
-            "name": "Full Stack (Django + Celery + Beat)",
+            "name": "Full Backend (Django + Celery + Beat)",
             "configurations": ["Django: ASGI (uvicorn)", "Celery: Worker", "Celery: Beat"],
+            "stopAll": true
+        },
+        {
+            "name": "Full Stack (Backend + Frontend)",
+            "configurations": ["Django: ASGI (uvicorn)", "Celery: Worker", "Next.js: Dev Server"],
+            "stopAll": true
+        },
+        {
+            "name": "Full Stack + Beat",
+            "configurations": ["Django: ASGI (uvicorn)", "Celery: Worker", "Celery: Beat", "Next.js: Dev Server"],
+            "stopAll": true
+        },
+        {
+            "name": "Frontend + Chrome Debug",
+            "configurations": ["Next.js: Dev Server", "Next.js: Debug Client-Side (Chrome)"],
             "stopAll": true
         }
     ]

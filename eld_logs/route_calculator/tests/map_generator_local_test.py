@@ -2,7 +2,8 @@
 """
 Test script for MapGenerator with actual route geometry.
 
-Run with: python test_map_generator.py
+Run with: pytest route_calculator/tests/map_generator_local_test.py -v
+Or standalone: python route_calculator/tests/map_generator_local_test.py
 """
 
 import io
@@ -10,7 +11,9 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+
+import pytest
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -27,22 +30,17 @@ try:
     import staticmap
 
     STATICMAP_AVAILABLE = True
-    print("✓ staticmap library available")
 except ImportError:
     STATICMAP_AVAILABLE = False
-    print("⚠ staticmap not installed (pip install staticmap)")
 
 
 # Simulated OpenRouteService geometry (actual road coordinates)
-# This represents a route following real roads, not straight lines
 SAMPLE_GEOMETRY_NYC_TO_PHILLY = {
     "type": "LineString",
     "coordinates": [
-        # NYC
         [-74.006, 40.7128],
         [-74.0055, 40.7135],
         [-74.003, 40.718],
-        # Through NJ
         [-74.05, 40.735],
         [-74.1, 40.75],
         [-74.15, 40.72],
@@ -54,14 +52,12 @@ SAMPLE_GEOMETRY_NYC_TO_PHILLY = {
         [-74.7, 40.5],
         [-74.8, 40.45],
         [-74.9, 40.4],
-        # Into PA
         [-75.0, 40.35],
         [-75.05, 40.3],
         [-75.1, 40.25],
         [-75.12, 40.2],
         [-75.14, 40.1],
         [-75.16, 40.05],
-        # Philadelphia
         [-75.1652, 39.9526],
     ],
 }
@@ -69,7 +65,6 @@ SAMPLE_GEOMETRY_NYC_TO_PHILLY = {
 SAMPLE_GEOMETRY_CROSS_COUNTRY = {
     "type": "LineString",
     "coordinates": [
-        # NYC
         [-74.006, 40.7128],
         [-74.5, 40.6],
         [-75.0, 40.4],
@@ -86,7 +81,6 @@ SAMPLE_GEOMETRY_CROSS_COUNTRY = {
         [-85.0, 40.2],
         [-86.0, 40.5],
         [-87.0, 41.0],
-        # Chicago
         [-87.6298, 41.8781],
         [-88.0, 41.5],
         [-90.0, 41.0],
@@ -99,10 +93,17 @@ SAMPLE_GEOMETRY_CROSS_COUNTRY = {
         [-109.0, 35.0],
         [-112.0, 34.5],
         [-115.0, 34.2],
-        # LA
         [-118.2437, 34.0522],
     ],
 }
+
+# List of test-generated files to clean up
+TEST_OUTPUT_FILES = [
+    "test_map_with_road_geometry.png",
+    "test_map_cross_country.png",
+    "test_map_no_geometry.png",
+    "test_map_osm_tiles.png",
+]
 
 
 class MapGenerator:
@@ -130,6 +131,7 @@ class MapGenerator:
         geometry: Optional[Dict[str, Any]] = None,
         width: int = DEFAULT_WIDTH,
         height: int = DEFAULT_HEIGHT,
+        progress_callback: Optional[Any] = None,
     ) -> bytes:
         if STATICMAP_AVAILABLE:
             try:
@@ -158,7 +160,6 @@ class MapGenerator:
             tile_size=256,
         )
 
-        # Draw actual route geometry
         if geometry and geometry.get("coordinates"):
             route_coords = geometry["coordinates"]
             if len(route_coords) >= 2:
@@ -171,7 +172,6 @@ class MapGenerator:
                 m.add_line(route_line)
                 logger.info(f"Drawing route with {len(route_coords)} points")
 
-        # Add markers
         markers = self._extract_markers(coordinates, segments)
         for marker in markers:
             color = self.MARKER_COLORS.get(marker["type"], {}).get("hex", "#808080")
@@ -204,7 +204,6 @@ class MapGenerator:
         if not coordinates:
             return self._generate_placeholder_map(width, height)
 
-        # Calculate bounds
         all_points = [(c["lon"], c["lat"]) for c in coordinates]
         if geometry and geometry.get("coordinates"):
             all_points.extend([(c[0], c[1]) for c in geometry["coordinates"]])
@@ -240,13 +239,11 @@ class MapGenerator:
             y = map_y + int((max_lat - lat) / (max_lat - min_lat) * map_h)
             return x, y
 
-        # Draw route
         if geometry and geometry.get("coordinates"):
             pts = [to_px(c[0], c[1]) for c in geometry["coordinates"]]
             for i in range(len(pts) - 1):
                 draw.line([pts[i], pts[i + 1]], fill=(51, 136, 255), width=3)
 
-        # Draw markers
         markers = self._extract_markers(coordinates, segments)
         font = self._load_font(10)
 
@@ -340,7 +337,7 @@ class MapGenerator:
         for p in paths:
             try:
                 return ImageFont.truetype(p, size)
-            except:
+            except Exception:
                 continue
         return ImageFont.load_default()
 
@@ -359,6 +356,23 @@ class MapGenerator:
         return buf.getvalue()
 
 
+def cleanup_test_files():
+    """Remove all test-generated files."""
+    for filename in TEST_OUTPUT_FILES:
+        try:
+            if os.path.exists(filename):
+                os.remove(filename)
+        except OSError:
+            pass
+
+
+@pytest.fixture(autouse=True)
+def cleanup_after_test():
+    """Fixture to clean up test files after each test."""
+    yield
+    cleanup_test_files()
+
+
 # ============================================================
 # TESTS
 # ============================================================
@@ -366,10 +380,6 @@ class MapGenerator:
 
 def test_route_with_geometry():
     """Test map with actual route geometry (following roads)."""
-    print("\n" + "=" * 60)
-    print("TEST 1: Route with Actual Road Geometry (NYC -> Philly)")
-    print("=" * 60)
-
     gen = MapGenerator()
 
     coordinates = [
@@ -383,40 +393,24 @@ def test_route_with_geometry():
         {"type": "dropoff", "location": "Philadelphia, PA"},
     ]
 
-    try:
-        image_bytes = gen.generate_route_map(
-            coordinates=coordinates,
-            segments=segments,
-            geometry=SAMPLE_GEOMETRY_NYC_TO_PHILLY,  # Actual road path!
-        )
+    image_bytes = gen.generate_route_map(
+        coordinates=coordinates,
+        segments=segments,
+        geometry=SAMPLE_GEOMETRY_NYC_TO_PHILLY,
+    )
 
-        out = "test_map_with_road_geometry.png"
-        with open(out, "wb") as f:
-            f.write(image_bytes)
+    assert image_bytes is not None
+    assert len(image_bytes) > 0
 
-        size = os.path.getsize(out)
-        print(f"✓ Generated: {out} ({size:,} bytes)")
-        print(
-            f"✓ Route follows {len(SAMPLE_GEOMETRY_NYC_TO_PHILLY['coordinates'])} road points"
-        )
-
-        img = Image.open(out)
-        print(f"✓ Image: {img.width}x{img.height}")
-        return True
-    except Exception as e:
-        print(f"✗ FAILED: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
+    # Verify it's a valid PNG
+    img = Image.open(io.BytesIO(image_bytes))
+    assert img.format == "PNG"
+    assert img.width > 0
+    assert img.height > 0
 
 
 def test_cross_country_route():
     """Test cross-country route with geometry."""
-    print("\n" + "=" * 60)
-    print("TEST 2: Cross-Country Route (NYC -> Chicago -> LA)")
-    print("=" * 60)
-
     gen = MapGenerator()
 
     coordinates = [
@@ -435,30 +429,21 @@ def test_cross_country_route():
         {"type": "dropoff", "location": "Los Angeles, CA"},
     ]
 
-    try:
-        image_bytes = gen.generate_route_map(
-            coordinates=coordinates,
-            segments=segments,
-            geometry=SAMPLE_GEOMETRY_CROSS_COUNTRY,
-        )
+    image_bytes = gen.generate_route_map(
+        coordinates=coordinates,
+        segments=segments,
+        geometry=SAMPLE_GEOMETRY_CROSS_COUNTRY,
+    )
 
-        out = "test_map_cross_country.png"
-        with open(out, "wb") as f:
-            f.write(image_bytes)
+    assert image_bytes is not None
+    assert len(image_bytes) > 0
 
-        print(f"✓ Generated: {out} ({os.path.getsize(out):,} bytes)")
-        return True
-    except Exception as e:
-        print(f"✗ FAILED: {e}")
-        return False
+    img = Image.open(io.BytesIO(image_bytes))
+    assert img.format == "PNG"
 
 
 def test_no_geometry_fallback():
     """Test fallback when no geometry provided."""
-    print("\n" + "=" * 60)
-    print("TEST 3: Fallback - No Geometry (Straight Lines)")
-    print("=" * 60)
-
     gen = MapGenerator()
 
     coordinates = [
@@ -473,35 +458,22 @@ def test_no_geometry_fallback():
         {"type": "dropoff"},
     ]
 
-    try:
-        image_bytes = gen.generate_route_map(
-            coordinates=coordinates,
-            segments=segments,
-            geometry=None,  # No geometry - should draw straight lines
-        )
+    image_bytes = gen.generate_route_map(
+        coordinates=coordinates,
+        segments=segments,
+        geometry=None,
+    )
 
-        out = "test_map_no_geometry.png"
-        with open(out, "wb") as f:
-            f.write(image_bytes)
+    assert image_bytes is not None
+    assert len(image_bytes) > 0
 
-        print(f"✓ Generated fallback: {out} ({os.path.getsize(out):,} bytes)")
-        print("  (Should show straight lines, not road paths)")
-        return True
-    except Exception as e:
-        print(f"✗ FAILED: {e}")
-        return False
+    img = Image.open(io.BytesIO(image_bytes))
+    assert img.format == "PNG"
 
 
+@pytest.mark.skipif(not STATICMAP_AVAILABLE, reason="staticmap not installed")
 def test_staticmap_tiles():
     """Test that staticmap fetches real OSM tiles."""
-    print("\n" + "=" * 60)
-    print("TEST 4: OSM Tile Fetching (if staticmap available)")
-    print("=" * 60)
-
-    if not STATICMAP_AVAILABLE:
-        print("⚠ Skipped - staticmap not installed")
-        return True
-
     gen = MapGenerator()
 
     coordinates = [
@@ -509,7 +481,6 @@ def test_staticmap_tiles():
         {"lat": 45.5152, "lon": -122.6784, "name": "Portland, OR"},
     ]
 
-    # Simple geometry along I-5
     geometry = {
         "type": "LineString",
         "coordinates": [
@@ -523,75 +494,190 @@ def test_staticmap_tiles():
         ],
     }
 
-    try:
-        image_bytes = gen.generate_route_map(
-            coordinates=coordinates,
-            segments=[],
-            geometry=geometry,
-        )
+    image_bytes = gen.generate_route_map(
+        coordinates=coordinates,
+        segments=[],
+        geometry=geometry,
+    )
 
-        out = "test_map_osm_tiles.png"
-        with open(out, "wb") as f:
-            f.write(image_bytes)
+    assert image_bytes is not None
+    assert len(image_bytes) > 0
 
-        size = os.path.getsize(out)
-        print(f"✓ Generated with OSM tiles: {out} ({size:,} bytes)")
-
-        # Real tile maps are usually larger
-        if size > 50000:
-            print("✓ File size indicates real map tiles were fetched")
-        else:
-            print("⚠ Small file - may be fallback rendering")
-
-        return True
-    except Exception as e:
-        print(f"✗ FAILED: {e}")
-        return False
+    img = Image.open(io.BytesIO(image_bytes))
+    assert img.format == "PNG"
 
 
-def run_all_tests():
+def test_empty_coordinates():
+    """Test handling of empty coordinates."""
+    gen = MapGenerator()
+
+    image_bytes = gen.generate_route_map(
+        coordinates=[],
+        segments=[],
+        geometry=None,
+    )
+
+    assert image_bytes is not None
+    assert len(image_bytes) > 0
+
+
+def test_extract_markers_assigns_types():
+    """Test that marker types are correctly assigned."""
+    gen = MapGenerator()
+
+    coordinates = [
+        {"lat": 40.0, "lon": -74.0, "name": "Start"},
+        {"lat": 41.0, "lon": -75.0, "name": "Middle"},
+        {"lat": 42.0, "lon": -76.0, "name": "End"},
+    ]
+
+    markers = gen._extract_markers(coordinates, [])
+
+    assert len(markers) == 3
+    assert markers[0]["type"] == "start"
+    assert markers[1]["type"] == "pickup"
+    assert markers[2]["type"] == "dropoff"
+
+
+# ============================================================
+# STANDALONE RUNNER (for manual testing)
+# ============================================================
+
+
+def run_standalone_tests():
+    """Run tests standalone with file output for visual inspection."""
     print("\n" + "#" * 60)
     print("# MapGenerator Test Suite - Route Geometry Support")
     print(f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"# staticmap available: {STATICMAP_AVAILABLE}")
     print("#" * 60)
 
-    tests = [
-        ("Route with Road Geometry", test_route_with_geometry),
-        ("Cross-Country Route", test_cross_country_route),
-        ("No Geometry Fallback", test_no_geometry_fallback),
-        ("OSM Tile Fetching", test_staticmap_tiles),
-    ]
+    tests_passed = 0
+    tests_failed = 0
 
-    results = []
-    for name, func in tests:
-        try:
-            results.append((name, func()))
-        except Exception as e:
-            print(f"✗ {name} crashed: {e}")
-            results.append((name, False))
+    try:
+        # Test 1: Route with geometry
+        print("\n" + "=" * 60)
+        print("TEST 1: Route with Actual Road Geometry (NYC -> Philly)")
+        print("=" * 60)
 
+        gen = MapGenerator()
+        coordinates = [
+            {"lat": 40.7128, "lon": -74.006, "name": "New York, NY"},
+            {"lat": 39.9526, "lon": -75.1652, "name": "Philadelphia, PA"},
+        ]
+        segments = [
+            {"type": "start", "location": "New York, NY"},
+            {"type": "drive", "distance": 95},
+            {"type": "dropoff", "location": "Philadelphia, PA"},
+        ]
+
+        image_bytes = gen.generate_route_map(
+            coordinates=coordinates,
+            segments=segments,
+            geometry=SAMPLE_GEOMETRY_NYC_TO_PHILLY,
+        )
+
+        out = "test_map_with_road_geometry.png"
+        with open(out, "wb") as f:
+            f.write(image_bytes)
+
+        print(f"Generated: {out} ({os.path.getsize(out):,} bytes)")
+        tests_passed += 1
+
+    except Exception as e:
+        print(f"FAILED: {e}")
+        tests_failed += 1
+
+    try:
+        # Test 2: Cross-country route
+        print("\n" + "=" * 60)
+        print("TEST 2: Cross-Country Route (NYC -> Chicago -> LA)")
+        print("=" * 60)
+
+        gen = MapGenerator()
+        coordinates = [
+            {"lat": 40.7128, "lon": -74.006, "name": "New York, NY"},
+            {"lat": 41.8781, "lon": -87.6298, "name": "Chicago, IL"},
+            {"lat": 34.0522, "lon": -118.2437, "name": "Los Angeles, CA"},
+        ]
+        segments = [
+            {"type": "start", "location": "New York, NY"},
+            {"type": "drive", "distance": 790},
+            {"type": "pickup", "location": "Chicago, IL"},
+            {"type": "rest", "location": "Iowa"},
+            {"type": "drive", "distance": 2015},
+            {"type": "fuel", "location": "Arizona"},
+            {"type": "dropoff", "location": "Los Angeles, CA"},
+        ]
+
+        image_bytes = gen.generate_route_map(
+            coordinates=coordinates,
+            segments=segments,
+            geometry=SAMPLE_GEOMETRY_CROSS_COUNTRY,
+        )
+
+        out = "test_map_cross_country.png"
+        with open(out, "wb") as f:
+            f.write(image_bytes)
+
+        print(f"Generated: {out} ({os.path.getsize(out):,} bytes)")
+        tests_passed += 1
+
+    except Exception as e:
+        print(f"FAILED: {e}")
+        tests_failed += 1
+
+    try:
+        # Test 3: No geometry fallback
+        print("\n" + "=" * 60)
+        print("TEST 3: Fallback - No Geometry (Straight Lines)")
+        print("=" * 60)
+
+        gen = MapGenerator()
+        coordinates = [
+            {"lat": 38.9072, "lon": -77.0369, "name": "Washington, DC"},
+            {"lat": 39.2904, "lon": -76.6122, "name": "Baltimore, MD"},
+            {"lat": 39.9526, "lon": -75.1652, "name": "Philadelphia, PA"},
+        ]
+        segments = [
+            {"type": "start"},
+            {"type": "pickup"},
+            {"type": "dropoff"},
+        ]
+
+        image_bytes = gen.generate_route_map(
+            coordinates=coordinates,
+            segments=segments,
+            geometry=None,
+        )
+
+        out = "test_map_no_geometry.png"
+        with open(out, "wb") as f:
+            f.write(image_bytes)
+
+        print(f"Generated: {out} ({os.path.getsize(out):,} bytes)")
+        tests_passed += 1
+
+    except Exception as e:
+        print(f"FAILED: {e}")
+        tests_failed += 1
+
+    # Summary
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
+    print(f"  Passed: {tests_passed}")
+    print(f"  Failed: {tests_failed}")
 
-    passed = sum(1 for _, r in results if r)
-    for name, r in results:
-        print(f"  {'✓' if r else '✗'} {name}")
+    # Cleanup
+    print("\nCleaning up test files...")
+    cleanup_test_files()
+    print("Cleanup complete.")
 
-    print(f"\n  {passed}/{len(results)} passed")
-
-    files = [
-        f for f in os.listdir(".") if f.startswith("test_map_") and f.endswith(".png")
-    ]
-    if files:
-        print("\n  Generated files:")
-        for f in sorted(files):
-            print(f"    📁 {f} ({os.path.getsize(f):,} bytes)")
-
-    return passed == len(results)
+    return tests_failed == 0
 
 
 if __name__ == "__main__":
-    success = run_all_tests()
+    success = run_standalone_tests()
     sys.exit(0 if success else 1)

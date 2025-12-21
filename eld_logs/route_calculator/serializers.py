@@ -56,13 +56,13 @@ class TripCalculationSerializer(serializers.ModelSerializer):
             "map_error_message",
         ]
 
-    def get_map_url(self, obj: TripCalculation) -> str | None:
-        """Get the URL for the map file if it exists."""
-        if obj.map_file:
-            request = self.context.get("request")
-            if request:
-                return request.build_absolute_uri(obj.map_file.url)
-            return obj.map_file.url
+    def get_map_url(self, obj):
+        """Safely get map URL."""
+        if obj.map_file and obj.map_file.name:
+            try:
+                return obj.map_file.url
+            except ValueError:
+                return None
         return None
 
 

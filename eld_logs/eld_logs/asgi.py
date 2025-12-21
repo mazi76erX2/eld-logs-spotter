@@ -12,8 +12,8 @@ import os
 from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.security.websocket import AllowedHostsOriginValidator
-from django.core.asgi import get_asgi_application
 from decouple import config
+from django.core.asgi import get_asgi_application
 
 DJANGO_SETTINGS_MODULE: str = config(
     "DJANGO_SETTINGS_MODULE",
@@ -25,14 +25,25 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", DJANGO_SETTINGS_MODULE)
 # Initialize Django ASGI application early to ensure settings are loaded
 django_asgi_app = get_asgi_application()
 
-# Import after Django setup
+from django.conf import settings
 from route_calculator.routing import websocket_urlpatterns
+
+
+# Use origin validator only in production
+if settings.DEBUG:
+    # In development, allow all WebSocket connections
+    websocket_application = AuthMiddlewareStack(URLRouter(websocket_urlpatterns))
+else:
+    # In production, validate origins
+    from channels.security.websocket import AllowedHostsOriginValidator
+
+    websocket_application = AllowedHostsOriginValidator(
+        AuthMiddlewareStack(URLRouter(websocket_urlpatterns))
+    )
 
 application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
-        "websocket": AllowedHostsOriginValidator(
-            AuthMiddlewareStack(URLRouter(websocket_urlpatterns))
-        ),
+        "websocket": websocket_application,
     }
 )

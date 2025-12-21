@@ -1,29 +1,28 @@
 import logging
 from typing import Any
 
-from django.http import HttpResponse, FileResponse
-from drf_spectacular.utils import (
-    OpenApiParameter,
-    OpenApiResponse,
-    extend_schema,
-    extend_schema_view,
-)
+from django.http import FileResponse, HttpResponse
+from drf_spectacular.utils import (OpenApiParameter, OpenApiResponse,
+                                   extend_schema, extend_schema_view)
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from .models import TripCalculation
-from .serializers import (
-    TripCalculationSerializer,
-    TripInputSerializer,
-    TripStatusSerializer,
-    MapStatusSerializer,
-)
+from .serializers import (MapStatusSerializer, TripCalculationSerializer,
+                          TripInputSerializer, TripStatusSerializer)
 from .services.log_generator import LogGenerator
 from .tasks import calculate_trip_task, generate_map_task
 
 logger = logging.getLogger(__name__)
+
+
+class TripPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = "page_size"  # This enables ?page_size=2
+    max_page_size = 100
 
 
 @extend_schema_view(
@@ -48,6 +47,7 @@ class TripCalculationViewSet(viewsets.ModelViewSet):
 
     queryset = TripCalculation.objects.all()
     serializer_class = TripCalculationSerializer
+    pagination_class = TripPagination
 
     def get_queryset(self):
         """Return trips ordered by most recent."""

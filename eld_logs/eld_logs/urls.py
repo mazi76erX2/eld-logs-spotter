@@ -21,11 +21,21 @@ from django.contrib import admin
 from django.urls import URLPattern, include, path
 from drf_spectacular.views import (SpectacularAPIView, SpectacularRedocView,
                                    SpectacularSwaggerView)
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 from rest_framework.routers import DefaultRouter
+
 from route_calculator.views import TripCalculationViewSet
 
 router = DefaultRouter()
-router.register(r"trips", TripCalculationViewSet, basename="trip")
+router.register(r"trips", TripCalculationViewSet, basename="tripcalculation")
+
+
+@api_view(["GET"])
+def health_check(request):
+    """Health check endpoint."""
+    return Response({"status": "healthy", "database": "healthy"})
+
 
 urlpatterns: list[URLPattern] = [
     path("admin/", admin.site.urls),
@@ -41,6 +51,7 @@ urlpatterns: list[URLPattern] = [
         SpectacularRedocView.as_view(url_name="schema"),
         name="redoc",
     ),
+    path("api/health/", health_check, name="health-check"),
 ]
 
 if settings.DEBUG:

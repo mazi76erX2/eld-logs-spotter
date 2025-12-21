@@ -1,19 +1,23 @@
 import logging
 from datetime import datetime, timedelta
-from io import BytesIO
 from typing import Any, Optional
 
+from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 from django.core.files.base import ContentFile
 
 from .models import TripCalculation
 from .services.hos_calculator import HOSCalculator
-from .services.route_service import RouteService
 from .services.map_generator import MapGenerator
+from .services.route_service import RouteService
 
 logger = logging.getLogger(__name__)
+
+
+async def _async_group_send(channel_layer: Any, group: str, message: dict) -> None:
+    """Async helper to send message to channel group."""
+    await channel_layer.group_send(group, message)
 
 
 def send_progress_update(trip_id: int, data: dict[str, Any]) -> None:
@@ -27,7 +31,8 @@ def send_progress_update(trip_id: int, data: dict[str, Any]) -> None:
     try:
         channel_layer = get_channel_layer()
         if channel_layer:
-            async_to_sync(channel_layer.group_send)(
+            async_to_sync(_async_group_send)(
+                channel_layer,
                 f"trip_{trip_id}",
                 {
                     "type": "progress_update",
@@ -530,7 +535,6 @@ def _convert_to_fmcsa_logs(
 ) -> list[dict[str, Any]]:
     """
     Convert HOS segments into FMCSA-compliant daily log format.
-    (Same implementation as before - keeping for completeness)
     """
     daily_logs: list[dict[str, Any]] = []
     base_date = datetime.now()
@@ -656,8 +660,8 @@ def _convert_to_fmcsa_logs(
                 "events": events,
                 "total_miles": round(day_miles, 1),
                 "remarks": remarks,
-                "driver_name": "Driver Name",
-                "carrier_name": "Carrier Name",
+                "driver_name": "Michael Schumacer",
+                "carrier_name": "Ferrari",
                 "main_office": "Washington, D.C.",
                 "co_driver": "",
                 "from_address": day_from_address,
@@ -669,3 +673,27 @@ def _convert_to_fmcsa_logs(
         )
 
     return daily_logs
+
+
+def send_trip_list_update(trip_id: int, status: str) -> None:
+    """
+    Send trip update notification to trips list WebSocket.
+
+    Args:
+        trip_id: Trip ID
+        status: Current trip status
+    """
+    try:
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(_async_group_send)(
+                channel_layer,
+                "trips_list",
+                {
+                    "type": "trip_updated",
+                    "trip_id": trip_id,
+                    "status": status,
+                },
+            )
+    except Exception as e:
+        logger.warning(f"Failed to send trips list update: {e}")
