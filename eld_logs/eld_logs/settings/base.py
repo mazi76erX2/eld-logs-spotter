@@ -232,3 +232,23 @@ WHITENOISE_AUTOREFRESH = True
 
 # Storage backend (local or cloudinary)
 STORAGE_BACKEND: str = config("STORAGE_BACKEND", default="local")
+
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME": config("CLOUDINARY_CLOUD_NAME", default=""),
+    "API_KEY": config("CLOUDINARY_API_KEY", default=""),
+    "API_SECRET": config("CLOUDINARY_API_SECRET", default=""),
+}
+
+# Initialize Cloudinary if credentials exist
+if CLOUDINARY_STORAGE.get("CLOUD_NAME"):
+    try:
+        import cloudinary
+
+        cloudinary.config(
+            cloud_name=CLOUDINARY_STORAGE["CLOUD_NAME"],
+            api_key=CLOUDINARY_STORAGE["API_KEY"],
+            api_secret=CLOUDINARY_STORAGE["API_SECRET"],
+            secure=True,
+        )
+    except ImportError:
+        pass

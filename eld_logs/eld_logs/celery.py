@@ -7,7 +7,7 @@ from decouple import config
 
 DJANGO_SETTINGS_MODULE: str = config(
     "DJANGO_SETTINGS_MODULE",
-    default="eld_logs.settings.local",
+    default="eld_logs.settings.production",
 )
 
 # Set default Django settings module
