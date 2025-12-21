@@ -1,4 +1,3 @@
-// hooks/use-trip-progress.ts
 "use client";
 
 import { tripKeys } from "@/lib/api/client";
@@ -12,7 +11,7 @@ import {
   TripProgressService,
 } from "@/lib/websocket/trip-progress";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // TYPES
 export interface TripProgressState {
@@ -73,7 +72,8 @@ export function useTripProgress(
   } = options;
 
   const queryClient = useQueryClient();
-  const [state, setState] = useState<TripProgressState>(initialState);
+  const [internalState, setInternalState] =
+    useState<TripProgressState>(initialState);
 
   const serviceRef = useRef<TripProgressService | TripProgressPoller | null>(
     null
@@ -88,7 +88,7 @@ export function useTripProgress(
   }, [onComplete, onError]);
 
   const handleProgress = useCallback((message: WebSocketProgressMessage) => {
-    setState((prev) => {
+    setInternalState((prev) => {
       const newState: TripProgressState = {
         ...prev,
         tripId: message.trip_id,
@@ -129,7 +129,7 @@ export function useTripProgress(
 
   const handleError = useCallback((error: Error) => {
     console.error("[TripProgress] Error:", error);
-    setState((prev) => ({
+    setInternalState((prev) => ({
       ...prev,
       error: error.message,
     }));
@@ -137,7 +137,7 @@ export function useTripProgress(
   }, []);
 
   const handleConnectionChange = useCallback((connected: boolean) => {
-    setState((prev) => ({
+    setInternalState((prev) => ({
       ...prev,
       isConnected: connected,
     }));
@@ -146,7 +146,6 @@ export function useTripProgress(
   // Connect/disconnect based on tripId
   useEffect(() => {
     if (!tripId) {
-      setState(initialState);
       return;
     }
 
@@ -190,6 +189,14 @@ export function useTripProgress(
     handleError,
     handleConnectionChange,
   ]);
+
+  // Derive state: return initialState when no tripId
+  const state = useMemo((): TripProgressState => {
+    if (!tripId) {
+      return initialState;
+    }
+    return internalState;
+  }, [tripId, internalState]);
 
   // Invalidate queries when trip is completed
   useEffect(() => {

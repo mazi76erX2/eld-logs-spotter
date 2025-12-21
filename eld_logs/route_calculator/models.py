@@ -104,7 +104,6 @@ class TripCalculation(models.Model):
             and self.map_file.name
         )
 
-    @property
     def get_map_url(self) -> Optional[str]:
         """Get the map URL (Cloudinary or local)."""
         if self.map_url:

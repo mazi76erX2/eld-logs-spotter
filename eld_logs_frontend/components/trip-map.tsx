@@ -7,6 +7,7 @@ import {
   Navigation,
   RefreshCw,
 } from "lucide-react";
+import Image from "next/image";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -151,11 +152,13 @@ export function TripMap({
     // Map is ready - show image with full URL
     if (isMapReady && fullMapUrl && !imageError) {
       return (
-        <img
+        <Image
           src={fullMapUrl}
           alt="Route Map"
-          className="absolute inset-0 h-full w-full object-contain"
+          fill
+          className="object-contain"
           onError={() => setImageError(true)}
+          unoptimized // Required for external URLs
         />
       );
     }
