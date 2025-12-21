@@ -60,7 +60,7 @@ class TripCalculationSerializer(serializers.ModelSerializer):
         """Safely get map URL."""
         if obj.map_file and obj.map_file.name:
             try:
-                return obj.map_file.url
+                return obj.get_map_url()
             except ValueError:
                 return None
         return None

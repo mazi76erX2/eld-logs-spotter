@@ -59,6 +59,12 @@ class TripCalculation(models.Model):
         null=True,
         blank=True,
     )
+    map_url = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="Cloudinary URL for production storage",
+    )
     map_task_id = models.CharField(max_length=255, null=True, blank=True, db_index=True)
 
     # Timestamps
@@ -97,6 +103,15 @@ class TripCalculation(models.Model):
             and bool(self.map_file)
             and self.map_file.name
         )
+
+    @property
+    def get_map_url(self) -> Optional[str]:
+        """Get the map URL (Cloudinary or local)."""
+        if self.map_url:
+            return self.map_url
+        if self.map_file and self.map_file.name:
+            return self.map_file.url
+        return None
 
     @property
     def overall_progress(self) -> int:

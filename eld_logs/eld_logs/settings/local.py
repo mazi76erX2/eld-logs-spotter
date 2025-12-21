@@ -9,58 +9,19 @@ ALLOWED_HOSTS: list[str] = config(
 # define which origins are allowed
 CORS_ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
-# INSTALLED_APPS += [
-#     "debug_toolbar",
-# ]
+DEBUG = True
 
-# MIDDLEWARE += [
-#     "debug_toolbar.middleware.DebugToolbarMiddleware",
-# ]
+# Local file storage
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# Disable security for local development
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 
 INTERNAL_IPS = [
     # ...
     "127.0.0.1",
     # ...
 ]
-
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "verbose": {
-            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
-            "style": "{",
-        },
-        "simple": {
-            "format": "{levelname} {asctime} {module} {message}",
-            "style": "{",
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "simple",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
-    },
-    "loggers": {
-        "django": {
-            "handlers": ["console"],
-            "level": config("DJANGO_LOG_LEVEL", default="INFO"),
-            "propagate": False,
-        },
-        "route_calculator": {
-            "handlers": ["console"],
-            "level": "DEBUG",
-            "propagate": False,
-        },
-        "celery": {
-            "handlers": ["console"],
-            "level": "INFO",
-            "propagate": False,
-        },
-    },
-}

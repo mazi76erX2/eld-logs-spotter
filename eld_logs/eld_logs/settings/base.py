@@ -225,6 +225,10 @@ SPECTACULAR_SETTINGS = {
 
 TEMPLATE_FILENAME = "blank-paper-log.png"
 
-# Whte noise settings
+# Whitenoise settings
 WHITENOISE_USE_FINDERS = True
 WHITENOISE_AUTOREFRESH = True
+
+
+# Storage backend (local or cloudinary)
+STORAGE_BACKEND: str = config("STORAGE_BACKEND", default="local")
