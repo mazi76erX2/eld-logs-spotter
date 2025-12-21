@@ -1,9 +1,9 @@
-import { TripDashboard } from "@/components/trip-dashboard"
+import { TripDashboard } from "@/components/trip-dashboard";
 
 export default function Page() {
   return (
-    <main className="min-h-screen bg-background font-sans">
+    <main className="bg-background min-h-screen font-sans">
       <TripDashboard />
     </main>
-  )
+  );
 }

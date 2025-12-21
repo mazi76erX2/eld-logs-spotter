@@ -1,407 +1,505 @@
 "use client";
 
+import { History, Search, Truck } from "lucide-react";
 import * as React from "react";
-import {
-  Truck,
-  MapPin,
-  History,
-  FileText,
-  Download,
-  Search,
-  ChevronRight,
-  Clock,
-  Navigation,
-  Activity,
-  Calendar,
-} from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
+
+import { TripForm } from "@/components/trip-form";
+import { TripLogs } from "@/components/trip-logs";
+import { TripMap } from "@/components/trip-map";
+import { TripProgress } from "@/components/trip-progress";
+
+import {
+  useCalculateTrip,
+  useDownloadLog,
+  useDownloadMap,
+  useRetryMap,
+  useTrip,
+  useTripLogs,
+  useTrips,
+} from "@/hooks/use-trip";
+import { useTripProgress } from "@/hooks/use-trip-progress";
+import {
+  formatDistance,
+  formatDuration,
+  formatTripDays,
+} from "@/lib/api/client";
+import type { TripCalculateRequest } from "@/lib/api/types";
 
 export function TripDashboard() {
   const { toast } = useToast();
-  const [isCalculating, setIsCalculating] = React.useState(false);
-  const [currentTrip, setCurrentTrip] = React.useState<any>(null);
 
-  const handleCalculate = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsCalculating(true);
+  // State
+  const [currentTripId, setCurrentTripId] = React.useState<number | null>(null);
+  const [downloadingDay, setDownloadingDay] = React.useState<number | null>(
+    null
+  );
 
-    // Simulate API call to /api/trips/calculate/
-    setTimeout(() => {
-      setIsCalculating(false);
-      setCurrentTrip({
-        id: "TRP-8921",
-        status: "processing",
-        current_location: "Los Angeles, CA",
-        pickup_location: "Phoenix, AZ",
-        dropoff_location: "Dallas, TX",
-        created_at: new Date().toISOString(),
-      });
+  // React Query hooks
+  const {
+    data: tripsData,
+    isLoading: isLoadingTrips,
+    refetch: refetchTrips,
+  } = useTrips(1);
+
+  const {
+    data: currentTrip,
+    isLoading: isLoadingTrip,
+    refetch: refetchTrip,
+  } = useTrip(currentTripId);
+
+  const {
+    data: logsData,
+    isLoading: isLoadingLogs,
+    refetch: refetchLogs,
+  } = useTripLogs(currentTripId);
+
+  // Mutations
+  const calculateMutation = useCalculateTrip();
+  const downloadLogMutation = useDownloadLog();
+  const downloadMapMutation = useDownloadMap();
+  const retryMapMutation = useRetryMap();
+
+  // Derived state
+  const recentTrips = tripsData?.results.slice(0, 5) ?? [];
+  const logs = logsData?.logs ?? [];
+
+  // Progress tracking via WebSocket
+  const progress = useTripProgress(currentTripId, {
+    onComplete: async (_tripId) => {
       toast({
-        title: "Calculation Started",
-        description: "Your trip route and HOS logs are being generated.",
+        title: "Trip Complete",
+        description: "Your route and HOS logs have been generated.",
       });
-    }, 1500);
+
+      // Refetch trip and logs data
+      await refetchTrip();
+      await refetchLogs();
+      await refetchTrips();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handle form submission
+  const handleCalculate = async (data: TripCalculateRequest) => {
+    try {
+      const result = await calculateMutation.mutateAsync(data);
+
+      if (result) {
+        setCurrentTripId(result.id);
+        toast({
+          title: "Trip Created",
+          description: "Calculating your route and generating HOS logs...",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to calculate trip",
+        variant: "destructive",
+      });
+    }
   };
 
+  // Handle loading a previous trip
+  const handleLoadTrip = (tripId: number) => {
+    setCurrentTripId(tripId);
+  };
+
+  // Handle downloading a daily log
+  const handleDownloadLog = async (day: number) => {
+    if (!currentTripId) return;
+
+    setDownloadingDay(day);
+    try {
+      await downloadLogMutation.mutateAsync({ tripId: currentTripId, day });
+      toast({
+        title: "Download Started",
+        description: `Downloading log for day ${day}...`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to download log",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingDay(null);
+    }
+  };
+
+  // Handle downloading the map
+  const handleDownloadMap = async () => {
+    if (!currentTripId) return;
+
+    try {
+      const result = await downloadMapMutation.mutateAsync({
+        tripId: currentTripId,
+      });
+      if (result.success) {
+        toast({
+          title: "Download Started",
+          description: "Downloading route map...",
+        });
+      } else {
+        toast({
+          title: "Map Not Ready",
+          description: result.message || "The map is still being generated.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to download map",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle retrying map generation
+  const handleRetryMap = async () => {
+    if (!currentTripId) return;
+
+    try {
+      await retryMapMutation.mutateAsync(currentTripId);
+      toast({
+        title: "Map Regeneration",
+        description: "The map is being regenerated. Please wait...",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to retry map",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Computed states - fixed to properly detect completion
+  const isProcessing = React.useMemo(() => {
+    // Currently submitting the form
+    if (calculateMutation.isPending) return true;
+
+    // Trip is explicitly completed
+    if (currentTrip?.status === "completed") return false;
+
+    // Progress indicates completion
+    if (progress.isCompleted && progress.isMapReady) return false;
+
+    // Trip is processing
+    if (currentTrip?.status === "processing") return true;
+
+    // WebSocket says processing (and not completed)
+    if (
+      progress.isConnected &&
+      progress.status === "processing" &&
+      !progress.isCompleted
+    ) {
+      return true;
+    }
+
+    return false;
+  }, [
+    calculateMutation.isPending,
+    currentTrip?.status,
+    progress.isCompleted,
+    progress.isMapReady,
+    progress.isConnected,
+    progress.status,
+  ]);
+
+  const isApiLoading =
+    isLoadingTrips || isLoadingTrip || calculateMutation.isPending;
+
+  // Get the best available map data (prefer real-time progress over cached trip data)
+  const mapUrl = progress.mapUrl || currentTrip?.map_url || null;
+  const mapStatus = progress.mapStatus || currentTrip?.map_status || null;
+  const mapProgress = progress.mapProgress || currentTrip?.map_progress || 0;
+  const isMapReady = progress.isMapReady || currentTrip?.is_map_ready || false;
+
   return (
-    <div className="flex flex-col min-h-screen">
-      <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="container flex h-16 items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary p-1.5 rounded-lg">
-              <Truck className="h-6 w-6 text-primary-foreground" />
+    <div className="bg-background min-h-screen">
+      <Toaster />
+
+      {/* Header */}
+      <header className="bg-card border-b">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Truck className="text-primary h-8 w-8" />
+              <div>
+                <h1 className="text-2xl font-bold">Trip Dashboard</h1>
+                <p className="text-muted-foreground text-sm">
+                  Plan routes and generate ELD logs
+                </p>
+              </div>
             </div>
-            <span className="text-xl font-bold tracking-tight">ELD Logs</span>
-          </div>
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-            <a href="#" className="text-primary transition-colors">
-              Dashboard
-            </a>
-            <a
-              href="#"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Trips
-            </a>
-            <a
-              href="#"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Compliance
-            </a>
-            <a
-              href="#"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Settings
-            </a>
-          </nav>
-          <div className="flex items-center gap-4">
-            <Button variant="outline" size="sm">
-              Feedback
-            </Button>
-            <Button size="sm" className="bg-primary hover:bg-primary/90">
-              Get Started
-            </Button>
+            <Badge variant={isProcessing ? "default" : "secondary"}>
+              {isProcessing ? "Processing..." : "Ready"}
+            </Badge>
           </div>
         </div>
       </header>
 
-      <div className="flex-1 container grid md:grid-cols-[350px_1fr] gap-6 p-4 md:p-6 max-w-7xl mx-auto">
-        {/* Left Column: Form and Status */}
-        <aside className="space-y-6">
-          <Card className="bg-card/50 border-border">
-            <CardHeader>
-              <CardTitle className="text-lg">Calculate New Trip</CardTitle>
-              <CardDescription>
-                Enter locations to generate HOS compliant route
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCalculate} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="current">Current Location</Label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="current"
-                      placeholder="e.g. Los Angeles, CA"
-                      className="pl-9 bg-background/50 border-border"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pickup">Pickup Location</Label>
-                  <div className="relative">
-                    <Navigation className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="pickup"
-                      placeholder="e.g. Phoenix, AZ"
-                      className="pl-9 bg-background/50 border-border"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dropoff">Dropoff Location</Label>
-                  <div className="relative">
-                    <ChevronRight className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="dropoff"
-                      placeholder="e.g. Dallas, TX"
-                      className="pl-9 bg-background/50 border-border"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cycle">Current Cycle Used (hrs)</Label>
-                  <div className="relative">
-                    <Clock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="cycle"
-                      type="number"
-                      defaultValue="0"
-                      className="pl-9 bg-background/50 border-border"
-                    />
-                  </div>
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full bg-primary hover:bg-primary/90"
-                  disabled={isCalculating}
-                >
-                  {isCalculating ? (
-                    <>
-                      <Activity className="mr-2 h-4 w-4 animate-spin" />
-                      Calculating...
-                    </>
-                  ) : (
-                    "Calculate Route"
-                  )}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          {currentTrip && (
-            <Card className="border-primary/20 bg-primary/5">
-              <CardContent className="pt-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Current Job
-                    </p>
-                    <h4 className="font-bold">{currentTrip.id}</h4>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className="bg-background border-primary text-primary"
-                  >
-                    {currentTrip.status}
-                  </Badge>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">From</span>
-                    <span className="font-medium">
-                      {currentTrip.current_location}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">To</span>
-                    <span className="font-medium">
-                      {currentTrip.dropoff_location}
-                    </span>
-                  </div>
-                </div>
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Left Column - Form & Recent Trips */}
+          <div className="space-y-6">
+            {/* Trip Form Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  Plan New Trip
+                </CardTitle>
+                <CardDescription>
+                  Enter your trip details to calculate the optimal route and
+                  generate HOS logs
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TripForm
+                  onSubmit={handleCalculate}
+                  isLoading={calculateMutation.isPending || isProcessing}
+                />
               </CardContent>
             </Card>
-          )}
 
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <History className="h-4 w-4 text-primary" />
+            {/* Recent Trips Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5" />
                   Recent Trips
                 </CardTitle>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Search className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[200px] pr-4">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="mb-4 last:mb-0 border-b border-border pb-3 last:border-0"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium">TRP-482{i}</span>
-                      <span className="text-xs text-muted-foreground">
-                        2 days ago
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      Seattle, WA → Miami, FL
-                    </p>
-                  </div>
-                ))}
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        </aside>
-
-        {/* Right Column: Visualization and Logs */}
-        <section className="space-y-6">
-          {/* Map Placeholder - Inspired by the blueprint truck visual */}
-          <Card className="overflow-hidden border-border bg-slate-950">
-            <CardHeader className="bg-background/40 backdrop-blur-sm border-b border-border/50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Navigation className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-sm font-medium uppercase tracking-tight">
-                    Route Visualization
-                  </CardTitle>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-xs gap-1.5 border border-border/50"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Download Map
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0 relative aspect-video flex items-center justify-center bg-[url('/blueprint-style-highway-map-dark-blue.jpg')] bg-cover bg-center">
-              <div className="absolute inset-0 bg-blue-950/20 backdrop-brightness-75" />
-              <div className="relative z-10 text-center">
-                {!currentTrip ? (
-                  <div className="space-y-2 opacity-50">
-                    <Navigation className="h-12 w-12 mx-auto text-primary/40" />
-                    <p className="text-sm text-primary/60 font-medium">
-                      Enter details to see route geometry
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-full w-full">
-                    <div className="p-4 bg-background/80 backdrop-blur rounded-lg border border-primary/20 shadow-2xl">
-                      <Activity className="h-8 w-8 text-primary animate-pulse mx-auto mb-2" />
-                      <p className="text-xs font-mono text-primary uppercase tracking-widest">
-                        Processing Geodata...
+                <CardDescription>Click to load a previous trip</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-62.5">
+                  {isLoadingTrips ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <div className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
+                      <p className="text-muted-foreground mt-2 text-sm">
+                        Loading trips...
                       </p>
                     </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Card className="bg-card/50">
-              <CardHeader className="pb-2">
-                <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Total Distance
-                </CardDescription>
-                <CardTitle className="text-2xl font-bold">-- mi</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="bg-card/50">
-              <CardHeader className="pb-2">
-                <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Driving Time
-                </CardDescription>
-                <CardTitle className="text-2xl font-bold">-- hrs</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="bg-card/50 sm:col-span-2 lg:col-span-1">
-              <CardHeader className="pb-2">
-                <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Trip Duration
-                </CardDescription>
-                <CardTitle className="text-2xl font-bold">-- days</CardTitle>
-              </CardHeader>
+                  ) : recentTrips.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <Truck className="text-muted-foreground/50 mb-2 h-12 w-12" />
+                      <p className="text-muted-foreground text-sm">
+                        No recent trips found
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        Create your first trip above
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {recentTrips.map((trip) => (
+                        <Button
+                          key={trip.id}
+                          variant={
+                            currentTripId === trip.id ? "secondary" : "ghost"
+                          }
+                          className="h-auto w-full justify-start px-3 py-3 text-left"
+                          onClick={() => handleLoadTrip(trip.id)}
+                          disabled={isApiLoading}
+                        >
+                          <div className="flex w-full flex-col gap-1 overflow-hidden">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-sm font-medium">
+                                Trip #{trip.id}
+                              </span>
+                              <Badge
+                                variant={
+                                  trip.status === "completed"
+                                    ? "default"
+                                    : trip.status === "failed"
+                                      ? "destructive"
+                                      : "secondary"
+                                }
+                                className="text-xs"
+                              >
+                                {trip.status}
+                              </Badge>
+                            </div>
+                            <span className="text-muted-foreground truncate text-xs">
+                              {trip.pickup_location}
+                            </span>
+                            <span className="text-muted-foreground truncate text-xs">
+                              → {trip.dropoff_location}
+                            </span>
+                            {trip.total_distance && trip.total_driving_time && (
+                              <span className="text-muted-foreground text-xs">
+                                {formatDistance(trip.total_distance)} •{" "}
+                                {formatDuration(trip.total_driving_time)} •{" "}
+                                {formatTripDays(trip)}
+                              </span>
+                            )}
+                          </div>
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
             </Card>
           </div>
 
-          <Card className="border-border">
-            <CardHeader className="border-b border-border/50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-sm font-medium uppercase tracking-tight">
-                    Compliance Logs (ELD)
-                  </CardTitle>
-                </div>
-                <Badge variant="outline" className="text-xs">
-                  FMCSA HOS v2.4
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y divide-border">
-                {!currentTrip ? (
-                  <div className="p-12 text-center text-muted-foreground flex flex-col items-center gap-3">
-                    <Calendar className="h-10 w-10 opacity-20" />
-                    <p className="text-sm">
-                      No daily logs generated for this session
-                    </p>
-                  </div>
-                ) : (
-                  [1, 2].map((day) => (
-                    <div
-                      key={day}
-                      className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded bg-muted flex items-center justify-center border border-border">
-                          <span className="font-bold text-sm">D{day}</span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">
-                            Daily Log - Day {day}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Generated on {new Date().toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs"
-                        >
-                          View Data
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 text-xs gap-1.5 border-primary/50 text-primary hover:bg-primary/10 bg-transparent"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download PNG
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-      </div>
+          {/* Right Column - Map, Progress, Logs */}
+          <div className="space-y-6 lg:col-span-2">
+            {/* Progress Indicator - only show when actually processing */}
+            {isProcessing && progress.isConnected && (
+              <TripProgress progress={progress} />
+            )}
 
-      {/* Footer Branding */}
-      <footer className="mt-auto border-t border-border bg-card/30 p-6">
-        <div className="container max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs text-muted-foreground">
-            © 2025 ELD Logs Systems. All rights reserved. FMCSA & ELD Compliant
-            Infrastructure.
-          </p>
-          <div className="flex gap-4">
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest bg-muted px-2 py-0.5 rounded">
-              Build 12.20.25
-            </span>
-            <span className="text-[10px] font-mono text-primary uppercase tracking-widest bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
-              System Normal
-            </span>
+            {/* Map Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Route Map</CardTitle>
+                {currentTrip && currentTrip.total_distance && (
+                  <CardDescription>
+                    {formatDistance(currentTrip.total_distance)}
+                    {currentTrip.total_driving_time && (
+                      <> • {formatDuration(currentTrip.total_driving_time)}</>
+                    )}
+                    {currentTrip.status === "completed" && (
+                      <> • {formatTripDays(currentTrip)}</>
+                    )}
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent>
+                <TripMap
+                  tripId={currentTripId}
+                  mapUrl={mapUrl}
+                  mapStatus={mapStatus}
+                  mapProgress={mapProgress}
+                  isMapReady={isMapReady}
+                  isLoading={isProcessing && !progress.isConnected}
+                  onDownload={handleDownloadMap}
+                  onRetry={handleRetryMap}
+                  isDownloading={downloadMapMutation.isPending}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Logs Card */}
+            {currentTrip?.status === "completed" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>ELD Logs</CardTitle>
+                  <CardDescription>
+                    Daily Hours of Service logs for your trip
+                    {logs.length > 0 && (
+                      <>
+                        {" "}
+                        ({logs.length} {logs.length === 1 ? "day" : "days"})
+                      </>
+                    )}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TripLogs
+                    tripId={currentTripId}
+                    logs={logs}
+                    isLoading={isLoadingLogs}
+                    onDownload={handleDownloadLog}
+                    downloadingDay={downloadingDay}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Empty State */}
+            {!currentTrip && !isProcessing && (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <Truck className="text-muted-foreground/30 mb-4 h-16 w-16" />
+                  <h3 className="text-muted-foreground text-lg font-medium">
+                    No Trip Selected
+                  </h3>
+                  <p className="text-muted-foreground mt-1 max-w-sm text-center text-sm">
+                    Create a new trip using the form or select a recent trip to
+                    view the route and logs.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Loading State for Trip Details */}
+            {currentTripId && isLoadingTrip && !isProcessing && (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <div className="border-primary mb-4 h-12 w-12 animate-spin rounded-full border-4 border-t-transparent" />
+                  <h3 className="text-muted-foreground text-lg font-medium">
+                    Loading Trip Details
+                  </h3>
+                  <p className="text-muted-foreground mt-1 max-w-sm text-center text-sm">
+                    Please wait while we fetch the trip information...
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Error State */}
+            {currentTrip?.status === "failed" && (
+              <Card className="border-destructive/50">
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <div className="bg-destructive/10 mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                    <Truck className="text-destructive h-8 w-8" />
+                  </div>
+                  <h3 className="text-destructive text-lg font-medium">
+                    Trip Calculation Failed
+                  </h3>
+                  <p className="text-muted-foreground mt-1 max-w-sm text-center text-sm">
+                    {currentTrip.error_message ||
+                      "An error occurred while calculating the route. Please try again."}
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => setCurrentTripId(null)}
+                  >
+                    Start New Trip
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-card mt-auto border-t">
+        <div className="container mx-auto px-4 py-4">
+          <div className="text-muted-foreground flex items-center justify-between text-sm">
+            <p>ELD Logs Dashboard</p>
+            <p>FMCSA HOS Compliant</p>
           </div>
         </div>
       </footer>
