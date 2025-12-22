@@ -58,11 +58,29 @@ class TripCalculationSerializer(serializers.ModelSerializer):
 
     def get_map_url(self, obj):
         """Safely get map URL."""
-        if obj.map_file and obj.map_file.name:
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"[get_map_url] Trip {obj.id}:")
+        logger.info(f"  - map_file: {obj.map_file}")
+        logger.info(f"  - map_file.name: {getattr(obj.map_file, 'name', 'NO_NAME')}")
+        logger.info(f"  - map_status: {obj.map_status}")
+        logger.info(f"  - is_map_ready: {obj.is_map_ready}")
+
+        if obj.map_file:
             try:
-                return obj.get_map_url()
-            except ValueError:
-                return None
+                # Try direct .url first (standard Django file field)
+                url = obj.map_file.url
+                logger.info(f"  - Direct .url: {url}")
+                return url
+            except ValueError as e:
+                logger.error(f"  - ValueError getting URL: {e}")
+            except Exception as e:
+                logger.error(f"  - Exception getting URL: {e}")
+        else:
+            logger.warning(f"  - map_file is empty/None")
+
         return None
 
 
