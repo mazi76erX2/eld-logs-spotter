@@ -37,11 +37,13 @@ CSRF_TRUSTED_ORIGINS = config(
 )
 
 # CORS Settings
-CORS_ALLOWED_ORIGINS: list[str] = config(
-    "CORS_ALLOWED_ORIGINS",
-    default="https://eld-logs-spotter.vercel.app,http://localhost:3000",
-    cast=Csv(),
-)
+# CORS_ALLOWED_ORIGINS: list[str] = config(
+#     "CORS_ALLOWED_ORIGINS",
+#     default="https://eld-logs-spotter.vercel.app,http://localhost:3000",
+#     cast=Csv(),
+# )
+# TEMPORARY DEBUG - Remove after testing
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     "accept",
