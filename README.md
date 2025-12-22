@@ -7,7 +7,7 @@ A full-stack application that takes trip details as inputs and outputs route ins
 - [ELD Logs - Trip Planning \& HOS Compliance](#eld-logs---trip-planning--hos-compliance)
   - [Table of Contents](#table-of-contents)
   - [Overview](#overview)
-  - [Features](#features)
+  - [Feat**Route Calculation**: Optimal routing using OSRM (Open Source Routing Mac**HOS Compliance**: Automatic compliance with 70hrs/8days regula**ELD Log Generation**: Automated daily log sheet creation with proper grid dr**Fuel Stop Planning**: Automatic fuel stops every 1,000 **Pickup/Dropoff Handling**: 1-hour allocation for**Real-time Progress**: WebSocket-based progress tra**Responsive UI**: Modern Next.js frontend with dark theme](#featroute-calculation-optimal-routing-using-osrm-open-source-routing-machos-compliance-automatic-compliance-with-70hrs8days-regulaeld-log-generation-automated-daily-log-sheet-creation-with-proper-grid-drfuel-stop-planning-automatic-fuel-stops-every-1000-pickupdropoff-handling-1-hour-allocation-forreal-time-progress-websocket-based-progress-traresponsive-ui-modern-nextjs-frontend-with-dark-theme)
   - [Tech Stack](#tech-stack)
   - [Installation](#installation)
     - [Prerequisites](#prerequisites)
@@ -65,18 +65,10 @@ ELD Logs is a comprehensive trip planning application designed for property-carr
 - Multiple log sheets for longer trips
 - Route summary with distance, duration, and fuel stops
 
-## Features
-
-- 🗺️ **Route Calculation**: Optimal routing using OSRM (Open Source Routing Machine)
-- 📊 **HOS Compliance**: Automatic compliance with 70hrs/8days regulations
-- 📝 **ELD Log Generation**: Automated daily log sheet creation with proper grid drawing
-- ⛽ **Fuel Stop Planning**: Automatic fuel stops every 1,000 miles
-- 🚛 **Pickup/Dropoff Handling**: 1-hour allocation for each
-- 🔄 **Real-time Progress**: WebSocket-based progress tracking
-- 📱 **Responsive UI**: Modern Next.js frontend with dark theme
+## Feat**Route Calculation**: Optimal routing using OSRM (Open Source Routing Mac**HOS Compliance**: Automatic compliance with 70hrs/8days regula**ELD Log Generation**: Automated daily log sheet creation with proper grid dr**Fuel Stop Planning**: Automatic fuel stops every 1,000 **Pickup/Dropoff Handling**: 1-hour allocation for**Real-time Progress**: WebSocket-based progress tra**Responsive UI**: Modern Next.js frontend with dark theme
 
 ## Tech Stack
-
+   
 **Backend:**
 - Python 3.12+
 - Django 5.x with Django REST Framework
