@@ -90,17 +90,12 @@ MEDIA_URL = f"https://res.cloudinary.com/{CLOUDINARY_STORAGE['CLOUD_NAME']}/"
 
 # Static files with WhiteNoise
 MIDDLEWARE.insert(2, "whitenoise.middleware.WhiteNoiseMiddleware")  # noqa: F405
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
         "verbose": {
-            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
-            "style": "{",
-        },
-        "simple": {
             "format": "{levelname} {asctime} {module} {message}",
             "style": "{",
         },
@@ -108,7 +103,7 @@ LOGGING = {
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "simple",
+            "formatter": "verbose",
         },
     },
     "root": {
@@ -118,7 +113,17 @@ LOGGING = {
     "loggers": {
         "django": {
             "handlers": ["console"],
-            "level": config("DJANGO_LOG_LEVEL", default="INFO"),
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.channels": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "channels": {
+            "handlers": ["console"],
+            "level": "DEBUG",
             "propagate": False,
         },
         "route_calculator": {
@@ -126,9 +131,9 @@ LOGGING = {
             "level": "DEBUG",
             "propagate": False,
         },
-        "celery": {
+        "gunicorn": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": "DEBUG",
             "propagate": False,
         },
     },

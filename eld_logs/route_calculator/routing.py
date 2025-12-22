@@ -11,4 +11,5 @@ websocket_urlpatterns = [
         r"^ws/trips/$",
         consumers.TripListConsumer.as_asgi(),
     ),
+    re_path(r"^ws/test/$", consumers.TestConsumer.as_asgi()),
 ]

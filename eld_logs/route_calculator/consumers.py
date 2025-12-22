@@ -288,3 +288,18 @@ class TripListConsumer(AsyncWebsocketConsumer):
     async def send_json(self, data: dict[str, Any]) -> None:
         """Send JSON data to the WebSocket client."""
         await self.send(text_data=json.dumps(data))
+
+
+# In route_calculator/consumers.py - add this simple test consumer
+class TestConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        logger.info("Test WebSocket connecting...")
+        await self.accept()
+        await self.send(text_data=json.dumps({"message": "Connected!"}))
+        logger.info("Test WebSocket connected!")
+
+    async def disconnect(self, close_code):
+        logger.info(f"Test WebSocket disconnected: {close_code}")
+
+    async def receive(self, text_data):
+        await self.send(text_data=json.dumps({"echo": text_data}))
