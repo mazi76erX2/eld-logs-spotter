@@ -22,7 +22,7 @@ SECURE_HSTS_PRELOAD = True
 
 # Make sure ALLOWED_HOSTS is always set properly
 ALLOWED_HOSTS: list[str] = config(
-    "ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv()
+    "ALLOWED_HOSTS", default=".onrender.com,.vercel.app,localhost", cast=Csv()
 )
 
 # For admin static files
@@ -32,7 +32,14 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Add your actual domain(s) here
 CSRF_TRUSTED_ORIGINS = config(
     "CSRF_TRUSTED_ORIGINS",
-    default="http://localhost:1337,http://127.0.0.1:1337",
+    default="https://eld-logs-spotter.vercel.app,https://eld-logs-api.onrender.com",
+    cast=Csv(),
+)
+
+# CORS Settings
+CORS_ALLOWED_ORIGINS: list[str] = config(
+    "CORS_ALLOWED_ORIGINS",
+    default="https://eld-logs-spotter.vercel.app,http://localhost:3000",
     cast=Csv(),
 )
 
