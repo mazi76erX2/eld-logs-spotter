@@ -22,7 +22,9 @@ SECURE_HSTS_PRELOAD = True
 
 # Make sure ALLOWED_HOSTS is always set properly
 ALLOWED_HOSTS: list[str] = config(
-    "ALLOWED_HOSTS", default=".onrender.com,.vercel.app,localhost", cast=Csv()
+    "ALLOWED_HOSTS",
+    default="eld-logs.onrender.com,eld-logs-spotter.vercel.app,.onrender.com,.vercel.app,localhost,127.0.0.1",
+    cast=Csv(),
 )
 
 # For admin static files
