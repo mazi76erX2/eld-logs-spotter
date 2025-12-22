@@ -56,30 +56,18 @@ class TripCalculationSerializer(serializers.ModelSerializer):
             "map_error_message",
         ]
 
-    def get_map_url(self, obj):
-        """Safely get map URL."""
-        import logging
+    def get_map_url(self, obj) -> str | None:
+        """Get map URL."""
+        # First check if map_url field has a value (set by Cloudinary upload)
+        if hasattr(obj, "map_url") and obj.map_url:
+            return obj.map_url
 
-        logger = logging.getLogger(__name__)
-
-        logger.info(f"[get_map_url] Trip {obj.id}:")
-        logger.info(f"  - map_file: {obj.map_file}")
-        logger.info(f"  - map_file.name: {getattr(obj.map_file, 'name', 'NO_NAME')}")
-        logger.info(f"  - map_status: {obj.map_status}")
-        logger.info(f"  - is_map_ready: {obj.is_map_ready}")
-
-        if obj.map_file:
+        # Fallback to map_file if it exists
+        if obj.map_file and obj.map_file.name:
             try:
-                # Try direct .url first (standard Django file field)
-                url = obj.map_file.url
-                logger.info(f"  - Direct .url: {url}")
-                return url
-            except ValueError as e:
-                logger.error(f"  - ValueError getting URL: {e}")
-            except Exception as e:
-                logger.error(f"  - Exception getting URL: {e}")
-        else:
-            logger.warning(f"  - map_file is empty/None")
+                return obj.map_file.url
+            except ValueError:
+                return None
 
         return None
 
