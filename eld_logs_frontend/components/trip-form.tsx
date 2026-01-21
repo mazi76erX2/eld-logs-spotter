@@ -2,12 +2,15 @@
 
 import { useForm } from "@tanstack/react-form";
 import { ChevronRight, Clock, Loader2, MapPin, Navigation } from "lucide-react";
+import { useState } from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/use-toast";
 import type { TripCalculateRequest } from "@/lib/api/types";
+import { waitForServicesReady } from "@/lib/wake-up-service";
 
 // VALIDATION SCHEMAS
 const locationSchema = z
@@ -31,6 +34,8 @@ export function TripForm({
   isLoading = false,
   disabled = false,
 }: TripFormProps) {
+  const [isWakingUp, setIsWakingUp] = useState(false);
+
   const form = useForm({
     defaultValues: {
       current_location: "",
@@ -39,7 +44,37 @@ export function TripForm({
       current_cycle_used: 0,
     },
     onSubmit: async ({ value }) => {
-      await onSubmit(value);
+      try {
+        // Wake up services first
+        setIsWakingUp(true);
+        toast({
+          title: "Waking up services...",
+          description: "This may take up to 30 seconds on first load",
+        });
+
+        const serviceStatus = await waitForServicesReady();
+
+        if (!serviceStatus.isReady) {
+          toast({
+            variant: "destructive",
+            title: "Services Not Ready",
+            description: `API: ${serviceStatus.api ? "Ready" : "Not Ready"} | Celery: ${serviceStatus.celery ? "Ready" : "Not Ready"}`,
+          });
+          return;
+        }
+
+        // Services ready, proceed with calculation
+        toast({
+          title: "Services Ready",
+          description: "Starting trip calculation...",
+        });
+
+        await onSubmit(value);
+      } catch (error) {
+        console.error("Trip calculation error:", error);
+      } finally {
+        setIsWakingUp(false);
+      }
     },
   });
 
@@ -72,7 +107,7 @@ export function TripForm({
                 name={field.name}
                 placeholder="e.g. Los Angeles, CA"
                 className="bg-background/50 border-border pl-9"
-                disabled={isLoading || disabled}
+                disabled={isLoading || disabled || isWakingUp}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
@@ -108,7 +143,7 @@ export function TripForm({
                 name={field.name}
                 placeholder="e.g. Phoenix, AZ"
                 className="bg-background/50 border-border pl-9"
-                disabled={isLoading || disabled}
+                disabled={isLoading || disabled || isWakingUp}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
@@ -144,7 +179,7 @@ export function TripForm({
                 name={field.name}
                 placeholder="e.g. Dallas, TX"
                 className="bg-background/50 border-border pl-9"
-                disabled={isLoading || disabled}
+                disabled={isLoading || disabled || isWakingUp}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
@@ -184,7 +219,7 @@ export function TripForm({
                 max="70"
                 placeholder="0"
                 className="bg-background/50 border-border pl-9"
-                disabled={isLoading || disabled}
+                disabled={isLoading || disabled || isWakingUp}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) =>
@@ -209,9 +244,16 @@ export function TripForm({
           <Button
             type="submit"
             className="bg-primary hover:bg-primary/90 w-full"
-            disabled={!canSubmit || isLoading || disabled || isSubmitting}
+            disabled={
+              !canSubmit || isLoading || disabled || isSubmitting || isWakingUp
+            }
           >
-            {isLoading || isSubmitting ? (
+            {isWakingUp ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Waking up services...
+              </>
+            ) : isLoading || isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Calculating...
