@@ -85,5 +85,6 @@
     "terminal.integrated.env.windows": {
         "DJANGO_SETTINGS_MODULE": "eld_logs.settings.local",
         "PYTHONPATH": "${workspaceFolder}/eld_logs"
-    }
+    },
+    "CodeGPT.apiKey": "Perplexity"
 }
