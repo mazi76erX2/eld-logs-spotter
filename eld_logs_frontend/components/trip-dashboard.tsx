@@ -37,6 +37,7 @@ import {
   formatTripDays,
 } from "@/lib/api/client";
 import type { TripCalculateRequest } from "@/lib/api/types";
+import { wakeUpServices, type ServiceStatus } from "@/lib/wake-up-service";
 
 export function TripDashboard() {
   const { toast } = useToast();
@@ -46,8 +47,27 @@ export function TripDashboard() {
   const [downloadingDay, setDownloadingDay] = React.useState<number | null>(
     null
   );
+  const [serviceStatus, setServiceStatus] = React.useState<ServiceStatus>({
+    celery: false,
+    api: false,
+    isReady: false,
+  });
+  const [checkingServices, setCheckingServices] = React.useState(true);
 
-  // React Query hooks
+  React.useEffect(() => {
+    const checkServices = async () => {
+      setCheckingServices(true);
+      const status = await wakeUpServices();
+      setServiceStatus(status);
+      setCheckingServices(false);
+    };
+
+    checkServices();
+
+    const interval = setInterval(checkServices, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const {
     data: tripsData,
     isLoading: isLoadingTrips,
@@ -240,6 +260,24 @@ export function TripDashboard() {
   const mapProgress = progress.mapProgress || currentTrip?.map_progress || 0;
   const isMapReady = progress.isMapReady || currentTrip?.is_map_ready || false;
 
+  const getBadgeVariant = () => {
+    if (checkingServices) return "outline";
+    if (isProcessing) return "default";
+    if (!serviceStatus.isReady) return "destructive";
+    return "secondary";
+  };
+
+  const getBadgeText = () => {
+    if (checkingServices) return "Checking...";
+    if (isProcessing) return "Processing...";
+    if (!serviceStatus.isReady) {
+      if (!serviceStatus.api && !serviceStatus.celery) return "Services Down";
+      if (!serviceStatus.api) return "API Down";
+      if (!serviceStatus.celery) return "Celery Down";
+    }
+    return "Ready";
+  };
+
   return (
     <div className="bg-background min-h-screen">
       <Toaster />
@@ -257,8 +295,11 @@ export function TripDashboard() {
                 </p>
               </div>
             </div>
-            <Badge variant={isProcessing ? "default" : "secondary"}>
-              {isProcessing ? "Processing..." : "Ready"}
+            <Badge
+              variant={getBadgeVariant()}
+              className={checkingServices ? "animate-pulse" : ""}
+            >
+              {getBadgeText()}
             </Badge>
           </div>
         </div>
